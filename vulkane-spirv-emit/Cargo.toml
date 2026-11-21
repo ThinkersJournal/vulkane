@@ -8,8 +8,8 @@ license      = "MIT OR Apache-2.0"
 description  = "The SPIR-V compute-shader emitter for Unpopped: IR to a binary SPIR-V module (GLSL.std.450, storage-buffer blocks, a LocalSize entry), carried as the kernel's word stream. Vulkane owns SPIR-V."
 keywords     = ["spirv", "vulkan", "codegen", "compiler", "shader"]
 categories   = ["compilers", "development-tools", "graphics"]
-repository   = "https://github.com/ciresnave/vulkane"
-homepage     = "https://github.com/ciresnave/vulkane"
+repository   = "https://github.com/ThinkersJournal/vulkane"
+homepage     = "https://github.com/ThinkersJournal/vulkane"
 readme       = "README.md"
 include      = ["src/**", "README.md", "LICENSE-*", "THIRD-PARTY-NOTICES.md"]
 

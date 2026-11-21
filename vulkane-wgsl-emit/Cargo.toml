@@ -8,8 +8,8 @@ license      = "MIT OR Apache-2.0"
 description  = "The WGSL compute-shader emitter for Unpopped: IR to WGSL source (var<storage> operands, a @compute @workgroup_size entry) with typed declines for what WGSL lacks. Vulkane owns WGSL."
 keywords     = ["kernel", "codegen", "compiler", "wgsl", "shader"]
 categories   = ["compilers", "development-tools", "graphics"]
-repository   = "https://github.com/ciresnave/vulkane"
-homepage     = "https://github.com/ciresnave/vulkane"
+repository   = "https://github.com/ThinkersJournal/vulkane"
+homepage     = "https://github.com/ThinkersJournal/vulkane"
 readme       = "README.md"
 include      = ["src/**", "README.md", "LICENSE-*", "THIRD-PARTY-NOTICES.md"]
 

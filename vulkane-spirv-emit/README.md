@@ -1,7 +1,7 @@
 # vulkane-spirv-emit
 
 The SPIR-V compute-shader emitter for [Unpopped](https://crates.io/crates/unpopped), part of
-[Vulkane](https://github.com/ciresnave/vulkane). `SpirV` implements `unpopped::Backend`: it lowers a scalar
+[Vulkane](https://github.com/ThinkersJournal/vulkane). `SpirV` implements `unpopped::Backend`: it lowers a scalar
 elementwise `OpDef` to a binary SPIR-V module and returns it as the kernel's word stream
 (`GeneratedKernel::words()`), with the disassembly as `source`.
 

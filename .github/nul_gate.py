@@ -35,7 +35,7 @@ import tempfile
 #: Extensions of tracked files that are binary by nature, with the reason.
 BINARY: dict[str, str] = {
     ".spv": "compiled SPIR-V words (little-endian u32, NULs are normal)",
-    ".jpeg": "image",
+    ".png": "image",
 }
 
 #: Below this the listing is broken rather than the tree small. The tree holds
@@ -130,14 +130,14 @@ def self_test() -> int:
             return d
 
         base = {"a.rs": b"fn main() {}\n", "b.md": b"hello\n", "k.spv": b"\x03\x02\x23\x07\x00\x00",
-                "p.jpeg": b"\xff\xd8\x00"}
+                "p.png": b"\xff\xd8\x00"}
         cases = [
             ("clean tree passes (NULs in .spv are allowed)", base, 0),
             ("NUL in a text file fails", {**base, "c.rs": b"fn x() {}\x00\n"}, 1),
             ("UTF-16 text file fails", {**base, "d.md": "hi\n".encode("utf-16-le")}, 1),
-            ("stale BINARY entry (no .jpeg tracked) fails",
+            ("stale BINARY entry (no .png tracked) fails",
              {"a.rs": b"x\n", "b.md": b"y\n", "k.spv": b"\x00"}, 1),
-            ("too few text files fails", {"a.rs": b"x\n", "k.spv": b"\x00", "p.jpeg": b"\x00"}, 1),
+            ("too few text files fails", {"a.rs": b"x\n", "k.spv": b"\x00", "p.png": b"\x00"}, 1),
         ]
         for label, files, want in cases:
             d = tree(files)

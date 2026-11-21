@@ -8,8 +8,8 @@ license      = "MIT OR Apache-2.0"
 description  = "The HLSL compute-shader emitter for Unpopped: IR to HLSL source for DXC (StructuredBuffer operands, a [numthreads] entry), a thin layer over fishstringer-slang-emit. Vulkane owns HLSL."
 keywords     = ["kernel", "codegen", "compiler", "hlsl", "shader"]
 categories   = ["compilers", "development-tools", "graphics"]
-repository   = "https://github.com/ciresnave/vulkane"
-homepage     = "https://github.com/ciresnave/vulkane"
+repository   = "https://github.com/ThinkersJournal/vulkane"
+homepage     = "https://github.com/ThinkersJournal/vulkane"
 readme       = "README.md"
 include      = ["src/**", "README.md", "LICENSE-*", "THIRD-PARTY-NOTICES.md"]
 

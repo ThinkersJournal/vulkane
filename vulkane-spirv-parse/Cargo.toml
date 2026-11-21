@@ -8,8 +8,8 @@ license      = "MIT OR Apache-2.0"
 description  = "SPIR-V module model and reflection for Vulkane: decode a binary module, list entry points, workgroup sizes, descriptor bindings and capabilities, and re-encode it byte-identically."
 keywords     = ["spirv", "vulkan", "parser", "reflection", "shader"]
 categories   = ["parser-implementations", "development-tools", "graphics"]
-repository   = "https://github.com/ciresnave/vulkane"
-homepage     = "https://github.com/ciresnave/vulkane"
+repository   = "https://github.com/ThinkersJournal/vulkane"
+homepage     = "https://github.com/ThinkersJournal/vulkane"
 readme       = "README.md"
 include      = ["src/**", "README.md", "LICENSE-*", "THIRD-PARTY-NOTICES.md"]
 

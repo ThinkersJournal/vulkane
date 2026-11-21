@@ -8,8 +8,8 @@ license      = "MIT OR Apache-2.0"
 description  = "The GLSL compute-shader emitter for Unpopped: kernel-layer IR to GLSL 4.50 source (std430 buffers, shared arrays, barrier(), structured control flow) over the shared vulkane-kernel-text walker. Vulkane owns GLSL."
 keywords     = ["kernel", "codegen", "compiler", "glsl", "shader"]
 categories   = ["compilers", "development-tools", "graphics"]
-repository   = "https://github.com/ciresnave/vulkane"
-homepage     = "https://github.com/ciresnave/vulkane"
+repository   = "https://github.com/ThinkersJournal/vulkane"
+homepage     = "https://github.com/ThinkersJournal/vulkane"
 readme       = "README.md"
 include      = ["src/**", "README.md", "LICENSE-*"]
 

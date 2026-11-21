@@ -12,8 +12,8 @@ description = "The `vulkan:` capability-set vocabulary for KISS-Classify §6.8 `
 keywords = ["kiss", "vulkan", "kernel", "specialization", "vocabulary"]
 categories = ["encoding", "api-bindings", "no-std"]
 readme = "README.md"
-repository = "https://github.com/ciresnave/vulkane"
-homepage = "https://github.com/ciresnave/vulkane"
+repository = "https://github.com/ThinkersJournal/vulkane"
+homepage = "https://github.com/ThinkersJournal/vulkane"
 documentation = "https://docs.rs/kiss-vulkan-vocab"
 
 # INTENTIONALLY EMPTY, AND ENFORCED BY A TEST.

@@ -1,0 +1,3 @@
+kind: logo replaced (FLUX.1 schnell, Apache-2.0; CireSnave's pick 2026-11-21), repository moved to ThinkersJournal/vulkane
+---
+`vulkan.jpeg` (Microsoft Designer, personal-use-only terms) is removed from the working tree and replaced by `vulkane-logo.png`, generated with ComfyUI 0.43.0 and FLUX.1 [schnell] (Apache-2.0), seed 11; tool, model, licence, seed, prompt and CireSnave's pick are recorded in `PROVENANCE.md`. History is not rewritten. `.github/nul_gate.py` now lists `.png` as the binary extension. Every `github.com/ciresnave/vulkane` link (crate `repository`/`homepage`, README badge, docs, CI probe user agents) now points at `github.com/ThinkersJournal/vulkane`, which is where the repository was transferred on 2026-11-21.

@@ -11,8 +11,8 @@ license = "MIT OR Apache-2.0"
 description = "Derive macros for the vulkane Vulkan bindings crate. Provides #[derive(Vertex)] for automatic vertex input layout generation."
 keywords = ["vulkan", "derive", "vertex", "graphics", "gpu"]
 categories = ["graphics", "development-tools::procedural-macro-helpers"]
-repository = "https://github.com/ciresnave/vulkane"
-homepage = "https://github.com/ciresnave/vulkane"
+repository = "https://github.com/ThinkersJournal/vulkane"
+homepage = "https://github.com/ThinkersJournal/vulkane"
 documentation = "https://docs.rs/vulkane_derive"
 readme = "README.md"
 
