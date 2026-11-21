@@ -432,9 +432,9 @@ checksum = "7f5902afe74b0dc55434232ac6af9a38d754795d6be4eb43ae55073daa1ee55d"
 
 [[package]]
 name = "fishstringer-slang-emit"
-version = "0.4.0"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "567b71e04f808e8858d8da37195f2cedf94b0bd93eb1ba8da844a324fb3ef8ba"
+checksum = "c6878796a5b59cc15191d40b9c563a0b05b351400e18864debf05a0f8dccdafc"
 dependencies = [
  "unpopped",
  "unpopped-vocab",
@@ -2082,7 +2082,7 @@ dependencies = [
 
 [[package]]
 name = "vulkane"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "fishstringer-kernels-source",
  "kiss-vulkan-vocab",
@@ -2098,8 +2098,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "vulkane-glsl-emit"
+version = "0.25.2"
+dependencies = [
+ "tempfile",
+ "unpopped",
+ "unpopped-vocab",
+ "vulkane",
+ "vulkane-kernel-text",
+ "vulkane-spirv-emit",
+]
+
+[[package]]
 name = "vulkane-hlsl-emit"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "fishstringer-slang-emit",
  "tempfile",
@@ -2114,7 +2126,7 @@ dependencies = [
 
 [[package]]
 name = "vulkane-hlsl-parse"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "tree-sitter",
  "tree-sitter-hlsl",
@@ -2124,26 +2136,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "vulkane-kernel-text"
+version = "0.25.2"
+dependencies = [
+ "unpopped",
+ "unpopped-vocab",
+]
+
+[[package]]
 name = "vulkane-kernels-source"
-version = "0.25.1"
+version = "0.25.2"
 
 [[package]]
 name = "vulkane-slang-emit"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "fishstringer-slang-emit",
 ]
 
 [[package]]
 name = "vulkane-slang-parse"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "fishstringer-slang-parse",
 ]
 
 [[package]]
 name = "vulkane-spirv-emit"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "fishstringer-slang-emit",
  "rspirv",
@@ -2157,7 +2177,7 @@ dependencies = [
 
 [[package]]
 name = "vulkane-spirv-parse"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "rspirv",
  "thiserror 2.0.21",
@@ -2165,7 +2185,7 @@ dependencies = [
 
 [[package]]
 name = "vulkane-wgsl-emit"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "naga",
  "tempfile",
@@ -2173,12 +2193,13 @@ dependencies = [
  "unpopped-cpu-c",
  "unpopped-vocab",
  "vulkane",
+ "vulkane-kernel-text",
  "vulkane-spirv-emit",
 ]
 
 [[package]]
 name = "vulkane-wgsl-parse"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "naga",
  "wgsl-parse",

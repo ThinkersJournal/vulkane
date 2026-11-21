@@ -48,7 +48,7 @@ import sys
 import urllib.error
 import urllib.request
 
-UA = {"User-Agent": "cited-versions-probe (+https://github.com/ciresnave/vulkane)"}
+UA = {"User-Agent": "cited-versions-probe (+https://github.com/ThinkersJournal/vulkane)"}
 REGISTRY = "https://crates.io/api/v1/crates"
 
 STALE = "STALE"

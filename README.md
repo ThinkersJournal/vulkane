@@ -5,7 +5,7 @@ specification, plus a safe RAII wrapper that covers compute and graphics
 end-to-end — from instance creation through shadow mapping and deferred
 shading.
 
-[![CI](https://github.com/ciresnave/vulkane/actions/workflows/ci.yml/badge.svg)](https://github.com/ciresnave/vulkane/actions/workflows/ci.yml)
+[![CI](https://github.com/ThinkersJournal/vulkane/actions/workflows/ci.yml/badge.svg)](https://github.com/ThinkersJournal/vulkane/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/vulkane.svg)](https://crates.io/crates/vulkane)
 [![docs.rs](https://docs.rs/vulkane/badge.svg)](https://docs.rs/vulkane)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)

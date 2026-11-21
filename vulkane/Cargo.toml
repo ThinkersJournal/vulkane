@@ -1,6 +1,6 @@
 [package]
 name = "vulkane"
-version = "0.25.1"
+version = "0.25.2"
 edition = "2024"
 # 1.88 has several independent drivers: let-chains, `slice::as_chunks`,
 # and libloading 0.9 declaring rust-version 1.88.0. Removing any one of
@@ -20,8 +20,8 @@ description = "Vulkan API bindings generated entirely from vk.xml, with a comple
 keywords = ["vulkan", "graphics", "gpu", "rendering", "ffi"]
 categories = ["graphics", "api-bindings", "rendering", "external-ffi-bindings"]
 readme = "../README.md"
-repository = "https://github.com/ciresnave/vulkane"
-homepage = "https://github.com/ciresnave/vulkane"
+repository = "https://github.com/ThinkersJournal/vulkane"
+homepage = "https://github.com/ThinkersJournal/vulkane"
 documentation = "https://docs.rs/vulkane"
 
 [features]

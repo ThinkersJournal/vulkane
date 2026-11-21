@@ -30,9 +30,9 @@ use unpopped::backend::LowerError;
 use unpopped::kernel::{Block, KernelFn, Stmt};
 
 /// The reason text the four board 434 C refusals carry, so a caller and a test can recognise it.
-pub(crate) const DECLINED_434C: &str = "declined: possible exposure, board 434 C";
+pub const DECLINED_434C: &str = "declined: possible exposure, board 434 C";
 /// The reason text the seven board 434 C extended refusals carry.
-pub(crate) const DECLINED_434C_EXT: &str = "declined: possible exposure, board 434 C extended";
+pub const DECLINED_434C_EXT: &str = "declined: possible exposure, board 434 C extended";
 
 /// The name of the first declined statement in `block` and the ruling text it carries, looking inside `If`, `For`
 /// and `While` at any depth.
@@ -97,8 +97,7 @@ fn nested(stmt: &Stmt) -> Option<Declined> {
         | Stmt::CopyBulk { .. }
         | Stmt::Tcgen05Commit { .. }
         | Stmt::WgmmaWait { .. }
-        // Every other statement is not declined by name here; the kernel layer is not lowered by this emitter at all
-        // yet, so the default refusal applies.
+        // Every other statement is not declined by name here.
         | Stmt::Let { .. }
         | Stmt::Load { .. }
         | Stmt::Assign { .. }
@@ -128,18 +127,16 @@ fn nested(stmt: &Stmt) -> Option<Declined> {
     }
 }
 
-/// `Backend::lower_kernel` for an emitter that does not lower kernel-layer kernels yet: the typed refusal
-/// [`LowerError::UnsupportedKernel`], and when the kernel holds a declined statement the refusal NAMES it.
-pub(crate) fn refuse_kernel(backend: &str, kernel: &KernelFn) -> LowerError {
-    let detail = match find(&kernel.body) {
-        Some((name, ruling)) => format!(
+/// The by-name refusal of the first declined statement in `kernel` (at any depth), or `None`.
+///
+/// `backend` is the name used in the text (`glsl`, `wgsl`).
+#[must_use]
+pub fn declined_by_name(backend: &str, kernel: &KernelFn) -> Option<LowerError> {
+    let (name, ruling) = find(&kernel.body)?;
+    Some(LowerError::UnsupportedKernel {
+        detail: format!(
             "backend `{backend}` refuses `Stmt::{name}` by name ({ruling}); it is not lowered to a hardware operation on non-NVIDIA hardware (kernel `{}`)",
             kernel.name
         ),
-        None => format!(
-            "backend `{backend}` does not lower kernel-layer kernels (kernel `{}`)",
-            kernel.name
-        ),
-    };
-    LowerError::UnsupportedKernel { detail }
+    })
 }

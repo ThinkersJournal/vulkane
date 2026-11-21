@@ -55,7 +55,7 @@ import tempfile
 import urllib.error
 import urllib.request
 
-UA = {"User-Agent": "published-divergence-probe (+https://github.com/ciresnave/vulkane)"}
+UA = {"User-Agent": "published-divergence-probe (+https://github.com/ThinkersJournal/vulkane)"}
 REGISTRY = "https://crates.io/api/v1/crates"
 
 

@@ -1,6 +1,6 @@
 [package]
 name         = "vulkane-hlsl-parse"
-version      = "0.25.1"
+version      = "0.25.2"
 edition      = "2024"
 # 1.90: the same `tree-sitter-language` shim as `fishstringer-slang-parse`, formerly this repository's `vulkane-slang-parse` (the highest `rust-version` in the
 # dependency tree; re-measure with the collision/minimal-rust-version gate before publishing).
@@ -10,8 +10,8 @@ license      = "MIT OR Apache-2.0"
 description  = "The HLSL front end for Unpopped: a tree-sitter HLSL parser, the HLSL residue list and the `HLSL` Frontend that lifts HLSL compute kernels into Unpopped's IR. Vulkane owns HLSL."
 keywords     = ["kernel", "parser", "compiler", "hlsl", "shader"]
 categories   = ["compilers", "development-tools", "graphics"]
-repository   = "https://github.com/ciresnave/vulkane"
-homepage     = "https://github.com/ciresnave/vulkane"
+repository   = "https://github.com/ThinkersJournal/vulkane"
+homepage     = "https://github.com/ThinkersJournal/vulkane"
 readme       = "README.md"
 include      = ["src/**", "README.md", "LICENSE-*", "THIRD-PARTY-NOTICES.md"]
 

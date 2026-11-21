@@ -1,6 +1,6 @@
 # vulkane-spirv-parse
 
-SPIR-V module model and reflection for [Vulkane](https://github.com/ciresnave/vulkane), built on
+SPIR-V module model and reflection for [Vulkane](https://github.com/ThinkersJournal/vulkane), built on
 [`rspirv`](https://crates.io/crates/rspirv).
 
 ```rust

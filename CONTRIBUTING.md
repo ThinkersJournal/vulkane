@@ -26,7 +26,7 @@ Thank you for your interest in contributing to Vulkane! This document provides g
 2. Clone and build:
 
    ```bash
-   git clone https://github.com/ciresnave/vulkane.git
+   git clone https://github.com/ThinkersJournal/vulkane.git
    cd vulkane
    cargo build
    ```
@@ -601,7 +601,7 @@ promise instead.
 
 ## Getting Help
 
-- Open an issue at <https://github.com/ciresnave/vulkane/issues>
+- Open an issue at <https://github.com/ThinkersJournal/vulkane/issues>
 - Check existing issues and discussions first — Vulkan questions recur
 - Consult the API docs at <https://docs.rs/vulkane>
 
