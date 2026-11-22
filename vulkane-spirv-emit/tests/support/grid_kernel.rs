@@ -93,7 +93,7 @@ pub(crate) fn grid_kernel() -> KernelFn {
             value: packed(),
         },
     ];
-    let params = vec![Param::buffer("output", U32, BufferRole::Write, None)];
+    let params = vec![Param::buffer("output", U32, BufferRole::Write, Some(1))];
     let mut k = KernelFn::new(
         "grid3d",
         U32,
