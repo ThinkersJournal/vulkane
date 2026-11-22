@@ -1,0 +1,3 @@
+kind: spirv-emit 3-D launch device test (ROADMAP 8f, SPIR-V arm)
+---
+Adds a live device test for multi-dimensional dispatch: a 4x3x2 block in a 3x2x5 grid where every thread writes its packed `ThreadIdx`/`BlockIdx` to the cell that `BlockDim`/`GridDim` place it at, each of the 720 cells checked against the host value. A control that points one `GridDim` at the wrong axis fails the test. Adds `Gpu::run_grid` to the test support, and a unit negative that a `Scope::Cluster` barrier on a cluster launch is a typed decline. Test-only: no emitter code changes. GLSL, WGSL and HLSL arms are still owed.

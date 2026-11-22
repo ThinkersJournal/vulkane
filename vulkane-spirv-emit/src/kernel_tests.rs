@@ -176,6 +176,23 @@ fn what_this_slice_does_not_lower_is_a_typed_decline_naming_it() {
     );
     declined(&named, "Barrier");
 
+    // Row 8f: thread-block clusters have no SPIR-V form, so a cluster barrier on a launch that
+    // declares clusters is a decline naming the barrier, never an approximation by a block barrier.
+    let mut cluster = reverse(true);
+    cluster.launch = cluster.launch.map(|mut l| {
+        l.grid = [2, 1, 1];
+        l.cluster = Some([2, 1, 1]);
+        l
+    });
+    cluster.body.0.insert(
+        3,
+        Stmt::Barrier {
+            scope: Scope::Cluster,
+            kind: BarrierKind::Full,
+        },
+    );
+    declined(&cluster, "Barrier");
+
     let mut grid_dep = reverse(true);
     grid_dep.body.0.push(Stmt::GridDepWait);
     declined(&grid_dep, "GridDepWait");
