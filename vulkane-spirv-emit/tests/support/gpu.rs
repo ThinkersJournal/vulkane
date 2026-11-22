@@ -143,7 +143,7 @@ impl Gpu {
         pipeline: &ComputePipeline,
         layout: &PipelineLayout,
         dset: &DescriptorSet,
-        groups: u32,
+        groups: [u32; 3],
     ) {
         let cmd_pool = CommandPool::new(&self.device, self.qf).unwrap();
         let mut cmd = cmd_pool.allocate_primary().unwrap();
@@ -151,7 +151,7 @@ impl Gpu {
             let mut rec = cmd.begin().unwrap();
             rec.bind_compute_pipeline(pipeline);
             rec.bind_compute_descriptor_sets(layout, 0, &[dset]);
-            rec.dispatch(groups, 1, 1);
+            rec.dispatch(groups[0], groups[1], groups[2]);
             rec.memory_barrier(
                 PipelineStage::COMPUTE_SHADER,
                 PipelineStage::HOST,
@@ -247,11 +247,38 @@ impl Gpu {
             None => ComputePipeline::new(device, &layout, &shader, name),
         }
         .unwrap();
-        self.dispatch(&pipeline, &layout, &dset, groups as u32);
+        self.dispatch(&pipeline, &layout, &dset, [groups as u32, 1, 1]);
 
         let m = o_mem.map().unwrap();
         let raw = m.as_slice();
         (0..n)
+            .map(|i| u32::from_le_bytes(raw[i * 4..i * 4 + 4].try_into().unwrap()))
+            .collect()
+    }
+
+    /// Run `words` (entry point `name`) as a `groups`-shaped dispatch over one output buffer of
+    /// `cells` 32-bit cells (binding 0, pre-filled with [`SENTINEL`]) and return the cells.
+    #[allow(dead_code)]
+    pub(crate) fn run_grid(
+        &self,
+        name: &str,
+        words: &[u32],
+        cells: usize,
+        groups: [u32; 3],
+    ) -> Vec<u32> {
+        let device = &self.device;
+        let bytes = (cells * 4) as u64;
+        let (o_buf, mut o_mem) =
+            host_buffer(device, &self.physical, bytes, BufferUsage::STORAGE_BUFFER);
+        write_words(&mut o_mem, &vec![SENTINEL; cells]);
+        let (set_layout, _pool, dset) = self.bind(&[&o_buf], bytes, None);
+        let layout = PipelineLayout::new(device, &[&set_layout]).unwrap();
+        let shader = ShaderModule::from_spirv(device, words).unwrap();
+        let pipeline = ComputePipeline::new(device, &layout, &shader, name).unwrap();
+        self.dispatch(&pipeline, &layout, &dset, groups);
+        let m = o_mem.map().unwrap();
+        let raw = m.as_slice();
+        (0..cells)
             .map(|i| u32::from_le_bytes(raw[i * 4..i * 4 + 4].try_into().unwrap()))
             .collect()
     }
