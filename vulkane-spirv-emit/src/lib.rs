@@ -185,7 +185,9 @@ impl Backend for SpirV {
         if patent_decline::is_declined(kernel) {
             return Err(patent_decline::refuse_kernel(self.name(), kernel));
         }
-        kernel::lower(kernel)
+        // Packed values (vectors) become scalars first (`lower_dag` has no seam for them).
+        let scalarized = vulkane_kernel_text::scalarize(kernel)?;
+        kernel::lower(scalarized.as_ref().unwrap_or(kernel))
     }
     fn provider(&self) -> &str {
         "vulkane"
