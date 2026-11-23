@@ -71,6 +71,7 @@ impl Backend for Glsl {
             | ElementKind::U32
             | ElementKind::I64
             | ElementKind::U64
+            | ElementKind::F16
             | ElementKind::F32
             | ElementKind::F64 => DtypeSupport::Supported,
             _ => DtypeSupport::Unsupported,
@@ -87,12 +88,16 @@ impl Backend for Glsl {
     fn lower_kernel(&self, kernel: &KernelFn) -> Result<GeneratedKernel, LowerError> {
         let wide = matches!(kernel.compute, ElementKind::I64 | ElementKind::U64);
         let signed = matches!(kernel.compute, ElementKind::I64);
-        let float = matches!(kernel.compute, ElementKind::F32 | ElementKind::F64);
+        let float = matches!(
+            kernel.compute,
+            ElementKind::F16 | ElementKind::F32 | ElementKind::F64
+        );
         let text = dialect::Text {
             wide,
             signed,
             float,
             double: kernel.compute == ElementKind::F64,
+            half: kernel.compute == ElementKind::F16,
         };
         vulkane_kernel_text::lower_kernel(&text, kernel)
     }

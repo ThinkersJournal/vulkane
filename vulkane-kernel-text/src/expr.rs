@@ -92,7 +92,12 @@ impl Spell<'_> {
 
     /// A float literal, exact at `f32`, or a decline.
     fn constant(&self, v: f64) -> Result<Spelling, LowerError> {
-        let exact = self.sc.float && v.is_finite() && (self.d.double() || f64::from(v as f32) == v);
+        let at_width = if self.d.half() {
+            exact_half(v)
+        } else {
+            self.d.double() || f64::from(v as f32) == v
+        };
+        let exact = self.sc.float && v.is_finite() && at_width;
         match exact.then(|| self.d.lit_float(v)).flatten() {
             Some(s) => Ok(Spelling::Spelled(s)),
             None if self.sc.float => declined(format!(
@@ -224,6 +229,20 @@ impl Spell<'_> {
             ))
         }
     }
+}
+
+/// Whether `v` is exactly an IEEE half: within 65504, a multiple of 2^-24 (the smallest subnormal)
+/// and with at most 11 significant bits.
+fn exact_half(v: f64) -> bool {
+    let a = v.abs();
+    if a == 0.0 {
+        return true;
+    }
+    if a > 65504.0 || (a * 16_777_216.0).fract() != 0.0 {
+        return false;
+    }
+    let ulp = 2f64.powf(a.log2().floor().max(-14.0) - 10.0);
+    (a / ulp).fract() == 0.0
 }
 
 /// The hoisted declarations (in order) and the root spelling of `e`.
