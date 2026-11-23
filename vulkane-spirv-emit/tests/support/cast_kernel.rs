@@ -307,6 +307,128 @@ pub(crate) fn cases() -> Vec<CastCase> {
             .map(|&x| u64::from(f16_round(f64::from(x as f32), false)))
             .collect(),
     });
+    // Integer <-> half: a half tops out at 65504, so ties sit at 2049 / 2051 and the overflow edge at
+    // 65519 / 65520; i32::MAX and u32::MAX overflow to infinity.
+    let half_ints: [i32; 14] = [
+        0,
+        1,
+        -1,
+        2049,
+        2051,
+        4097,
+        -2049,
+        65_504,
+        65_519,
+        65_520,
+        65_535,
+        -65_520,
+        i32::MAX,
+        i32::MIN,
+    ];
+    v.push(CastCase {
+        name: "i32_to_f16",
+        src: I32,
+        dst: F16,
+        compute: F32,
+        round: ne,
+        sat: Saturation::Wrap,
+        input: half_ints.iter().map(|&x| i(x)).collect(),
+        want: half_ints
+            .iter()
+            .map(|&x| u64::from(f16_round(f64::from(x), false)))
+            .collect(),
+        // Round toward zero: wrong at 2051 and at the overflow edge (65520 is infinity, not 65504).
+        mutant: half_ints
+            .iter()
+            .map(|&x| u64::from(f16_round(f64::from(x), true)))
+            .collect(),
+    });
+    let half_uints: [u32; 10] = [
+        0,
+        1,
+        2049,
+        2051,
+        4097,
+        65_504,
+        65_519,
+        65_520,
+        4_000_000_001,
+        u32::MAX,
+    ];
+    v.push(CastCase {
+        name: "u32_to_f16",
+        src: U32,
+        dst: F16,
+        compute: F32,
+        round: ne,
+        sat: Saturation::Wrap,
+        input: half_uints.iter().map(|&x| u64::from(x)).collect(),
+        want: half_uints
+            .iter()
+            .map(|&x| u64::from(f16_round(f64::from(x), false)))
+            .collect(),
+        mutant: half_uints
+            .iter()
+            .map(|&x| u64::from(f16_round(f64::from(x), true)))
+            .collect(),
+    });
+    // Half to integer: the 12 half bit patterns of `f16_bits` plus rounding cases, a negative, infinities and NaN.
+    let h2i_bits: Vec<u16> = vec![
+        0x0000, 0x8000, 0x3800, 0x3e00, 0x4100, 0x4300, 0xb800, 0xbe00, 0xc100, 0x4166, 0xc166,
+        0x7bff, 0xfbff, 0x7c00, 0xfc00, 0x7e00, 0x1000, 0x63d0,
+    ];
+    for (name, dst, round, f, signed) in [
+        (
+            "f16_to_i32_nearest_even",
+            I32,
+            ne,
+            rte as fn(f64) -> f64,
+            true,
+        ),
+        (
+            "f16_to_i32_toward_zero",
+            I32,
+            RoundMode::TowardZero,
+            f64::trunc,
+            true,
+        ),
+        (
+            "f16_to_u32_nearest_even",
+            U32,
+            ne,
+            rte as fn(f64) -> f64,
+            false,
+        ),
+    ] {
+        let val = |b: u16| f(f64::from(f16_decode(b)));
+        v.push(CastCase {
+            name,
+            src: F16,
+            dst,
+            compute: F32,
+            round,
+            sat: Saturation::Clamp,
+            input: h2i_bits.iter().map(|&b| u64::from(b)).collect(),
+            want: h2i_bits
+                .iter()
+                .map(|&b| {
+                    if signed {
+                        i(val(b) as i32)
+                    } else {
+                        u64::from(val(b) as u32)
+                    }
+                })
+                .collect(),
+            // Wrap instead of clamp: wrong for the infinities and, unsigned, the negatives.
+            mutant: h2i_bits
+                .iter()
+                .map(|&b| {
+                    let w = wrap_i32(val(b));
+                    if signed { i(w) } else { u64::from(w as u32) }
+                })
+                .collect(),
+        });
+    }
     v
 }
 
