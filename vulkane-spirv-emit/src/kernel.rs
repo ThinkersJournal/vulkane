@@ -38,6 +38,7 @@
 //! A barrier under thread-divergent control is refused by `check_kernel` (`BarrierDivergent`), which
 //! runs first, so it is a typed decline carrying the checker's answer and is never silently moved.
 
+mod atomic;
 mod check;
 mod declare;
 mod flow;
@@ -251,6 +252,7 @@ impl Kc<'_> {
                 self.data(s)
             }
             Stmt::Barrier { .. } | Stmt::Fence { .. } => self.sync(s),
+            Stmt::AtomicRmw { .. } | Stmt::AtomicCas { .. } => self.atomic(s),
             Stmt::If { .. }
             | Stmt::For { .. }
             | Stmt::While { .. }
@@ -260,7 +262,7 @@ impl Kc<'_> {
             other => Err(refuse(
                 self.kernel,
                 format!(
-                    "`Stmt::{}` is not lowered (v1: Let, Load, Assign, Store, block/subgroup Barrier, Fence, control flow)",
+                    "`Stmt::{}` is not lowered (v1: Let, Load, Assign, Store, block/subgroup Barrier, Fence, 32-bit AtomicRmw/AtomicCas, control flow)",
                     stmt_name(other)
                 ),
             )),

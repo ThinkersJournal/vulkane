@@ -338,3 +338,64 @@ fn a_constant_allocation_is_a_typed_decline() {
         other => panic!("expected a decline, got {other:?}"),
     }
 }
+
+#[path = "../tests/support/atomic_kernel.rs"]
+mod atomic_kernel;
+
+/// Row 8d: the atomic kernel validates and holds each atomic instruction; the racy control swaps
+/// exactly one `OpAtomicIAdd` for plain memory traffic (the same query finds both counts).
+#[test]
+fn the_atomic_kernel_validates_and_the_racy_control_has_one_fewer_atomic_add() {
+    let atomic = lower(&atomic_kernel::atomic_kernel(false)).expect("lowers");
+    assert_valid(&atomic);
+    assert_eq!(
+        count(&atomic.source, "OpAtomicIAdd"),
+        2,
+        "{}",
+        atomic.source
+    );
+    assert_eq!(
+        count(&atomic.source, "OpAtomicUMin"),
+        1,
+        "{}",
+        atomic.source
+    );
+    assert_eq!(
+        count(&atomic.source, "OpAtomicCompareExchange"),
+        1,
+        "{}",
+        atomic.source
+    );
+    let racy = lower(&atomic_kernel::atomic_kernel(true)).expect("lowers");
+    assert_valid(&racy);
+    assert_eq!(count(&racy.source, "OpAtomicIAdd"), 1, "{}", racy.source);
+}
+
+/// Row 8d decline: no atomic on a `Private` array; `check_kernel` refuses it before this emitter does
+/// (the emitter keeps its own guard for the day that check moves).
+#[test]
+fn an_atomic_on_a_private_array_is_a_typed_decline() {
+    use unpopped::exec::{MemorySpace, Scope};
+    use unpopped::kernel::{AtomicOp, Place};
+    let mut k = private_kernel::private_index(N, MemorySpace::Private);
+    k.body.0.insert(
+        2,
+        Stmt::AtomicRmw {
+            op: AtomicOp::Add,
+            place: Place::Alloc {
+                alloc: 0,
+                index: c(0),
+            },
+            value: c(1),
+            old: None,
+            order: MemoryOrder::Relaxed,
+            scope: Scope::Block,
+        },
+    );
+    match lower(&k) {
+        Err(LowerError::UnsupportedKernel { detail }) => {
+            assert!(detail.contains("AtomicUnsupported"), "{detail}");
+        }
+        other => panic!("expected a decline, got {other:?}"),
+    }
+}
