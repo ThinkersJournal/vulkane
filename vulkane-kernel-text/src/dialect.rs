@@ -113,6 +113,12 @@ pub trait Dialect {
     fn float_refusal(&self) -> Option<&'static str> {
         None
     }
+    /// Whether an `I32`/`U32` kernel may hold `I8`/`U8`/`I16`/`U16` buffers and locals (reached by a
+    /// wrapping `Cast`, spelled by [`Self::convert`]). The default is no: such a kernel is then a typed
+    /// decline naming the buffer.
+    fn narrow_ints(&self) -> bool {
+        false
+    }
     /// Whether this dialect instance lowers float kernels (`F32`, or `F64` when [`Self::double`]). The default is no: such a kernel is then a
     /// typed decline naming the dialect. A dialect that says yes spells [`Self::lit_float`],
     /// [`Self::float_unary`] and [`Self::float_minmax`], keeps every float add, subtract and multiply

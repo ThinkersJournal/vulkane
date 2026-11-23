@@ -126,6 +126,9 @@ impl Spell<'_> {
         if self.sc.float {
             return self.float_cast(x, from, spec);
         }
+        if self.sc.narrow && !self.d.wide() {
+            return self.narrow_cast(x, from, spec);
+        }
         if spec.to != self.kernel.compute
             || spec.sat != Saturation::Wrap
             || spec.round != RoundMode::NearestEven
@@ -139,6 +142,38 @@ impl Spell<'_> {
             Some(s) => Ok(Spelling::Spelled(s)),
             None => declined(format!(
                 "a Cast from {from:?} is not lowered in {}",
+                self.d.name()
+            )),
+        }
+    }
+
+    /// A wrapping `Cast` between the 32-bit compute dtype, its 32-bit twin and the 8/16-bit integers.
+    fn narrow_cast(
+        &self,
+        x: &str,
+        from: ElementKind,
+        spec: CastSpec,
+    ) -> Result<Spelling, LowerError> {
+        use ElementKind::{I8, I16, I32, U8, U16, U32};
+        let known = |t| matches!(t, I8 | U8 | I16 | U16 | I32 | U32);
+        if !known(from) || !known(spec.to) {
+            return declined(format!(
+                "a Cast {from:?} -> {:?} is not lowered in {} (8-, 16- and 32-bit integers only)",
+                spec.to,
+                self.d.name()
+            ));
+        }
+        if spec.sat != Saturation::Wrap {
+            return declined(format!(
+                "an integer Cast with {:?} is not lowered: only a wrapping one is",
+                spec.sat
+            ));
+        }
+        match self.d.convert(x, from, spec.to, spec.round) {
+            Some(s) => Ok(Spelling::Spelled(s)),
+            None => declined(format!(
+                "a Cast {from:?} -> {:?} is not lowered in {}",
+                spec.to,
                 self.d.name()
             )),
         }
@@ -269,7 +304,7 @@ pub(crate) fn lower(
     let const_int = |v: i64, t: ElementKind| sp.const_int(v, t);
     let exec = |id| sp.exec(id);
     let temp = |ty: &str, name: &str, rhs: &str| {
-        if sc.float {
+        if sc.float || sc.narrow {
             d.temp_typed(ty, name, rhs)
         } else {
             d.temp(name, rhs, signed)
@@ -277,7 +312,7 @@ pub(crate) fn lower(
     };
     let cast = |x: String, from: ElementKind, spec: CastSpec| sp.cast(&x, from, spec);
     let type_name = |t: ElementKind| {
-        if sc.float {
+        if sc.float || sc.narrow {
             d.type_name(t)
         } else {
             (t == kernel.compute).then(String::new)
@@ -295,7 +330,7 @@ pub(crate) fn lower(
         .compute_dtype(kernel.compute);
     // Only a 64-bit kernel has a `Cast` seam: its execution ids and narrower operands are reached
     // through one. A 32-bit kernel keeps the walker's typed decline.
-    let lowering = if d.wide() || sc.float {
+    let lowering = if d.wide() || sc.float || sc.narrow {
         builder.cast(&cast).type_name(&type_name).build()
     } else {
         builder.build()

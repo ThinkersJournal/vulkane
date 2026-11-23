@@ -14,6 +14,8 @@ use crate::dialect::{Decl, Dialect, Layout};
 #[derive(Debug)]
 pub(crate) struct Scope {
     pub(crate) signed: bool,
+    /// An integer kernel holding 8- or 16-bit buffers or locals (a wrapping `Cast` reaches them).
+    pub(crate) narrow: bool,
     /// An `F32` or `F64` kernel (`signed` is then false and only used for the execution ids).
     pub(crate) float: bool,
     pub(crate) block: [u32; 3],
@@ -93,9 +95,16 @@ fn dtype(d: &dyn Dialect, kernel: &KernelFn) -> Result<(bool, bool), LowerError>
 /// Whether a buffer or local of type `elem` may appear in the kernel: the compute dtype, and in a
 /// float kernel the other float width and the 32-bit integers (the operands and results of a `Cast`).
 fn buffer_elem_ok(d: &dyn Dialect, kernel: &KernelFn, elem: ElementKind) -> bool {
+    let narrow_int = d.narrow_ints()
+        && matches!(kernel.compute, ElementKind::I32 | ElementKind::U32)
+        && matches!(
+            elem,
+            ElementKind::I8 | ElementKind::U8 | ElementKind::I16 | ElementKind::U16
+        );
     let other_float = matches!(kernel.compute, ElementKind::F32 | ElementKind::F64)
         && matches!(elem, ElementKind::F32 | ElementKind::F64);
     elem == kernel.compute
+        || narrow_int
         || (d.float()
             && matches!(
                 kernel.compute,
@@ -392,8 +401,17 @@ pub(crate) fn check(d: &dyn Dialect, kernel: &KernelFn) -> Result<Scope, LowerEr
     for decl in buffers.iter_mut().chain(shared.iter_mut()) {
         decl.atomic = atomic.contains(&decl.name);
     }
+    let is_narrow = |e: ElementKind| {
+        matches!(
+            e,
+            ElementKind::I8 | ElementKind::U8 | ElementKind::I16 | ElementKind::U16
+        )
+    };
+    let narrow = buffers.iter().any(|b| is_narrow(b.elem))
+        || kernel.locals.iter().any(|l| is_narrow(l.elem));
     Ok(Scope {
         signed,
+        narrow,
         float,
         block: launch.block,
         grid: launch.grid,
