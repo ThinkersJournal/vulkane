@@ -11,6 +11,9 @@ use super::W;
 impl W<'_> {
     /// One atomic statement.
     pub(super) fn atomic(&mut self, s: &Stmt) -> Result<(), LowerError> {
+        if self.sc.narrow {
+            return Err(self.no("an atomic in a kernel holding 8- or 16-bit buffers is not lowered (the atomic target would have to be checked to be 32-bit)"));
+        }
         match s {
             Stmt::AtomicRmw {
                 op,

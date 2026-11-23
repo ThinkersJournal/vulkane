@@ -64,6 +64,18 @@ fn axis(a: u8) -> Option<char> {
         .and_then(|s| s.chars().next())
 }
 
+/// The GLSL type of an 8- or 16-bit integer element (GL_EXT_shader_explicit_arithmetic_types_int8
+/// and _int16), or `None`.
+fn narrow_ty(elem: ElementKind) -> Option<&'static str> {
+    Some(match elem {
+        ElementKind::I8 => "int8_t",
+        ElementKind::U8 => "uint8_t",
+        ElementKind::I16 => "int16_t",
+        ElementKind::U16 => "uint16_t",
+        _ => return None,
+    })
+}
+
 /// The declared type and zero of a float-kernel element type.
 fn float_elem(elem: ElementKind) -> Option<(&'static str, &'static str)> {
     Some(match elem {
@@ -129,7 +141,9 @@ impl Text {
             let n = &b.name;
             let bt = float_elem(b.elem)
                 .filter(|_| self.float)
-                .map_or(t, |(ty, _)| ty);
+                .map(|(ty, _)| ty)
+                .or_else(|| narrow_ty(b.elem))
+                .unwrap_or(t);
             let _ = writeln!(
                 s,
                 "layout(std430, set = 0, binding = {}) {access}buffer B_{n} {{ {bt} data[]; }} {n};",
@@ -146,6 +160,27 @@ impl Text {
 }
 
 impl Text {
+    /// The extensions of an 8- or 16-bit integer buffer or local, only for the widths used.
+    fn narrow_header(layout: &Layout) -> String {
+        let elems: Vec<ElementKind> = layout
+            .buffers
+            .iter()
+            .map(|b| b.elem)
+            .chain(layout.local_elems.iter().copied())
+            .collect();
+        let has = |a: ElementKind, b: ElementKind| elems.iter().any(|e| *e == a || *e == b);
+        let mut s = String::new();
+        if has(ElementKind::I8, ElementKind::U8) {
+            s.push_str("#extension GL_EXT_shader_8bit_storage : require\n");
+            s.push_str("#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require\n");
+        }
+        if has(ElementKind::I16, ElementKind::U16) {
+            s.push_str("#extension GL_EXT_shader_16bit_storage : require\n");
+            s.push_str("#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require\n");
+        }
+        s
+    }
+
     /// The extension and float-control lines of a float kernel: `GL_ARB_gpu_shader_fp64` when a
     /// double is used, `DenormPreserve` and `SignedZeroInfNanPreserve` at each float width the kernel
     /// uses (its compute dtype, buffers and locals), and `RoundingModeRTE` where it rounds a
@@ -215,6 +250,10 @@ impl Dialect for Text {
         self.half
     }
 
+    fn narrow_ints(&self) -> bool {
+        true
+    }
+
     fn mixed_float_widths(&self) -> bool {
         // glslang keeps one `spirv_execution_mode` per mode, so a second width would silently replace
         // the first (measured with glslang 16.2: `DenormPreserve 32` then `64` leaves only 64).
@@ -279,6 +318,22 @@ impl Dialect for Text {
         to: ElementKind,
         round: RoundMode,
     ) -> Option<String> {
+        if let Some(ty) = narrow_ty(to) {
+            // An integer to an 8/16-bit integer: GLSL's conversion truncates (wraps).
+            return Some(format!("{ty}({x})"));
+        }
+        if matches!(
+            from,
+            ElementKind::I8 | ElementKind::U8 | ElementKind::I16 | ElementKind::U16
+        ) {
+            // An 8/16-bit integer widened: sign-extended when signed, zero-extended when not.
+            let ty = if to == ElementKind::I32 {
+                "int"
+            } else {
+                "uint"
+            };
+            return Some(format!("{ty}({x})"));
+        }
         let (ty, _) = float_elem(to)?;
         let src_float = matches!(from, ElementKind::F32 | ElementKind::F64);
         if !src_float || matches!(to, ElementKind::F32 | ElementKind::F64) {
@@ -315,7 +370,7 @@ impl Dialect for Text {
             ElementKind::F64 => Some("double".to_string()),
             ElementKind::U32 => Some("uint".to_string()),
             ElementKind::I32 => Some("int".to_string()),
-            _ => None,
+            other => narrow_ty(other).map(str::to_string),
         }
     }
 
@@ -353,6 +408,7 @@ impl Dialect for Text {
         if self.float {
             s.push_str(&self.float_header(layout));
         }
+        s.push_str(&Self::narrow_header(layout));
         if layout.subgroup {
             s.push_str("#extension GL_KHR_shader_subgroup_basic : enable\n");
         }
@@ -372,6 +428,10 @@ impl Dialect for Text {
                     ""
                 };
                 let _ = writeln!(s, "    {precise}{ty} l{i} = {zero};");
+                continue;
+            }
+            if let Some(ty) = layout.local_elems.get(i).copied().and_then(narrow_ty) {
+                let _ = writeln!(s, "    {ty} l{i} = {ty}(0);");
                 continue;
             }
             let init = layout
