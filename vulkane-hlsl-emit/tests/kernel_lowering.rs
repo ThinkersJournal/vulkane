@@ -18,6 +18,8 @@
 mod common;
 #[path = "../../vulkane-spirv-emit/tests/support/gpu.rs"]
 mod gpu;
+#[path = "../../vulkane-spirv-emit/tests/support/grid_kernel.rs"]
+mod grid_kernel;
 #[path = "../../vulkane-spirv-emit/tests/support/reverse_kernel.rs"]
 mod reverse_kernel;
 
@@ -193,6 +195,43 @@ fn a_block_reversed_through_groupshared_memory_is_exact_with_the_barrier() {
         eprintln!(
             "hlsl kernel_barrier control: without the barrier {wrong} of {} cells differ",
             want.len()
+        );
+    }
+}
+
+/// Row 8f: the shared 3-D kernel (non-cubic block and grid) through HLSL, every cell checked.
+#[test]
+fn a_non_cubic_3d_launch_writes_every_cell_its_own_ids_on_a_device() {
+    common::require_serialization_lock();
+    let features = DeviceFeatures::new().with_shader_int64();
+    let Some(gpu) = gpu::Gpu::open_with("hlsl_kernel_grid", Some((&features, "shaderInt64")))
+    else {
+        return; // skip already declared
+    };
+    let k = Hlsl
+        .lower_kernel(&grid_kernel::grid_kernel())
+        .expect("the HLSL backend lowers the 3-D kernel");
+    let Some(words) = dxc_words(&k) else {
+        return; // no dxc, declared above
+    };
+    let cells = grid_kernel::cells();
+    let got = gpu.run_grid_params(
+        &k.name,
+        &words,
+        cells,
+        grid_kernel::GRID,
+        Some(&params_bytes(&k)),
+    );
+    let nx = (grid_kernel::BLOCK[0] * grid_kernel::GRID[0]) as usize;
+    let ny = (grid_kernel::BLOCK[1] * grid_kernel::GRID[1]) as usize;
+    for (i, &w) in got.iter().enumerate() {
+        let (x, y, z) = (i % nx, (i / nx) % ny, i / (nx * ny));
+        let want = grid_kernel::expected(x as u32, y as u32, z as u32);
+        assert_eq!(
+            w, want,
+            "cell ({x},{y},{z})
+{}",
+            k.source
         );
     }
 }

@@ -14,6 +14,8 @@ mod common;
 mod flow_kernel;
 #[path = "../../vulkane-spirv-emit/tests/support/gpu.rs"]
 mod gpu;
+#[path = "../../vulkane-spirv-emit/tests/support/grid_kernel.rs"]
+mod grid_kernel;
 #[path = "../../vulkane-spirv-emit/tests/support/reverse_kernel.rs"]
 mod reverse_kernel;
 
@@ -174,6 +176,29 @@ fn nested_loops_break_continue_and_return_match_the_host_on_a_device() {
             Some(w) => assert_eq!(g, w, "thread {t}"),
             None => assert_eq!(g, gpu::SENTINEL, "thread {t} returned before its store"),
         }
+    }
+}
+
+/// Row 8f: the shared 3-D kernel (non-cubic block and grid) through WGSL, every cell checked.
+#[test]
+fn a_non_cubic_3d_launch_writes_every_cell_its_own_ids_on_a_device() {
+    common::require_serialization_lock();
+    let Some(gpu) = gpu::Gpu::open("wgsl_kernel_grid") else {
+        return;
+    };
+    let k = lower(&grid_kernel::grid_kernel());
+    let got = gpu.run_grid(&k.name, &words(&k), grid_kernel::cells(), grid_kernel::GRID);
+    let nx = (grid_kernel::BLOCK[0] * grid_kernel::GRID[0]) as usize;
+    let ny = (grid_kernel::BLOCK[1] * grid_kernel::GRID[1]) as usize;
+    for (i, &w) in got.iter().enumerate() {
+        let (x, y, z) = (i % nx, (i / nx) % ny, i / (nx * ny));
+        let want = grid_kernel::expected(x as u32, y as u32, z as u32);
+        assert_eq!(
+            w, want,
+            "cell ({x},{y},{z})
+{}",
+            k.source
+        );
     }
 }
 
