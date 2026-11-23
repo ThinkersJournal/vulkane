@@ -97,8 +97,8 @@ pub const WORKGROUP_SIZE: u32 = 256;
 /// Vulkan 1.1's mandatory shader model except `F64`, whose `shaderFloat64` feature the consumer
 /// enables (named in the module docs), so there is no target field to read.
 fn dtype_ok(dt: ElementKind, _target: TargetId) -> DtypeSupport {
-    // 64-bit integers are kernel-only (`lower_kernel`): a plan still declines them.
-    if Family::of(dt).is_some_and(|f| !f.is_wide()) {
+    // 8/16/64-bit integers are kernel-only (`lower_kernel`): a plan still declines them.
+    if Family::of(dt).is_some_and(|f| !f.is_wide() && !f.is_narrow()) {
         DtypeSupport::Supported
     } else {
         DtypeSupport::Unsupported
@@ -325,6 +325,8 @@ fn declare_entry(b: &mut Builder, fam: Family, main: Word, gid: Word, name: &str
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod kernel_narrow_tests;
 #[cfg(test)]
 mod kernel_tests;
 #[cfg(test)]

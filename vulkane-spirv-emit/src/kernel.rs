@@ -57,7 +57,7 @@ use unpopped::ir::ScalarExpr;
 use unpopped::kernel::{BarrierKind, KernelFn, MemoryOrder, Place, Stmt};
 use unpopped::types::Ty;
 
-use crate::ops::{Em, lo};
+use crate::ops::{Em, Family, lo};
 use crate::{KernelSeams, lower_body};
 use check::check_scope;
 use declare::{Module, declare};
@@ -100,6 +100,10 @@ struct Kc<'k> {
     subgroup: Option<[Word; 3]>,
     /// One storage-buffer variable per parameter.
     bufs: Vec<Word>,
+    /// The SPIR-V element type of each parameter's buffer.
+    buf_elem: Vec<Word>,
+    /// The SPIR-V type of each local (the compute dtype, or an 8/16-bit one).
+    local_ty: Vec<Word>,
     /// One workgroup variable per allocation.
     allocs: Vec<Word>,
     /// One function-scope variable per local.
@@ -179,8 +183,8 @@ impl Kc<'_> {
     /// The value of local `i`.
     fn local(&self, i: u32) -> Result<Spelling, LowerError> {
         let mut e = self.em.borrow_mut();
-        let t = e.t;
-        let var = self.locals[usize::try_from(i).expect("local id fits usize")];
+        let slot = usize::try_from(i).expect("local id fits usize");
+        let (t, var) = (self.local_ty[slot], self.locals[slot]);
         Ok(Spelling::Spelled(
             lo(e.b.load(t, None, var, None, []))?.to_string(),
         ))
@@ -200,9 +204,19 @@ impl Kc<'_> {
         lower_body(&self.em, e, Some(&seams))
     }
 
+    /// The SPIR-V type of the element `place` names.
+    fn place_ty(&self, place: &Place) -> Word {
+        match place {
+            Place::Logical { buffer, .. } => {
+                self.buf_elem[usize::try_from(*buffer).expect("buffer id fits usize")]
+            }
+            _ => self.t(),
+        }
+    }
+
     /// A pointer to the element `place` names.
     fn pointer(&self, place: &Place) -> Result<Word, LowerError> {
-        let t = self.t();
+        let t = self.place_ty(place);
         match place {
             Place::Logical { buffer, coords } if coords.len() == 1 => {
                 let idx = self.expr(&coords[0])?;
@@ -317,7 +331,7 @@ impl Kc<'_> {
 
     fn load_stmt(&self, local: u32, place: &Place) -> Result<(), LowerError> {
         let ptr = self.pointer(place)?;
-        let t = self.t();
+        let t = self.place_ty(place);
         let v = lo(self.em.borrow_mut().b.load(t, None, ptr, None, []))?;
         self.store_local(local, v)
     }
@@ -379,11 +393,20 @@ fn begin_body<'k>(
     let main =
         lo(m.b.begin_function(m.void, None, FunctionControl::NONE, m.fn_ty))?;
     lo(m.b.begin_block(None))?;
-    let fn_ptr = m.b.type_pointer(None, StorageClass::Function, m.t);
-    let locals: Vec<Word> = kernel
+    let local_ty: Vec<Word> = kernel
         .locals
         .iter()
-        .map(|_| m.b.variable(fn_ptr, None, StorageClass::Function, None))
+        .map(|l| match Family::of(l.elem) {
+            Some(f) if f != m.fam => crate::skeleton::element_type(&mut m.b, f, m.u32_t),
+            _ => m.t,
+        })
+        .collect();
+    let locals: Vec<Word> = local_ty
+        .iter()
+        .map(|&ty| {
+            let ptr = m.b.type_pointer(None, StorageClass::Function, ty);
+            m.b.variable(ptr, None, StorageClass::Function, None)
+        })
         .collect();
     init_spec_locals(&mut m, &locals)?;
     let em = RefCell::new(Em {
@@ -407,6 +430,8 @@ fn begin_body<'k>(
         group_id: m.group_id,
         subgroup: m.subgroup,
         bufs: m.bufs,
+        buf_elem: m.buf_elem,
+        local_ty,
         allocs: m.allocs,
         locals,
         block,

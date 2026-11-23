@@ -105,6 +105,12 @@ pub(crate) enum Family {
     /// 64-bit integers: kernels only (`Backend::lower_kernel`); a plan never lowers them.
     I64,
     U64,
+    /// 8- and 16-bit integers: storage and local types of a kernel (a `Cast` widens them to, and
+    /// narrows them from, the 32-bit compute dtype); never a compute dtype and never a plan dtype.
+    I8,
+    U8,
+    I16,
+    U16,
 }
 
 impl Family {
@@ -116,6 +122,10 @@ impl Family {
             ElementKind::U32 => Some(Family::U32),
             ElementKind::I64 => Some(Family::I64),
             ElementKind::U64 => Some(Family::U64),
+            ElementKind::I8 => Some(Family::I8),
+            ElementKind::U8 => Some(Family::U8),
+            ElementKind::I16 => Some(Family::I16),
+            ElementKind::U16 => Some(Family::U16),
             _ => None,
         }
     }
@@ -127,11 +137,16 @@ impl Family {
     }
     /// The width of the compute dtype in bits.
     pub(crate) fn bits(self) -> u32 {
-        if matches!(self, Family::F64 | Family::I64 | Family::U64) {
-            64
-        } else {
-            32
+        match self {
+            Family::F64 | Family::I64 | Family::U64 => 64,
+            Family::I8 | Family::U8 => 8,
+            Family::I16 | Family::U16 => 16,
+            _ => 32,
         }
+    }
+    /// An 8- or 16-bit integer, which needs `Int8`/`Int16` (and a storage capability in a buffer).
+    pub(crate) fn is_narrow(self) -> bool {
+        matches!(self, Family::I8 | Family::U8 | Family::I16 | Family::U16)
     }
     /// A 64-bit integer, which needs the `Int64` capability.
     pub(crate) fn is_wide(self) -> bool {
@@ -139,7 +154,7 @@ impl Family {
     }
     /// A signed integer family.
     pub(crate) fn is_signed(self) -> bool {
-        matches!(self, Family::I32 | Family::I64)
+        matches!(self, Family::I32 | Family::I64 | Family::I8 | Family::I16)
     }
 }
 

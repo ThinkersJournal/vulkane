@@ -31,14 +31,14 @@ impl Em {
         let (Some(src), Some(dst)) = (Family::of(from), Family::of(spec.to)) else {
             return declined(format!("a Cast {from:?} -> {:?} is not lowered", spec.to));
         };
-        if src.is_float() || dst.is_float() || spec.sat != Saturation::Wrap || spec.to != self.dtype
-        {
+        if src.is_float() || dst.is_float() || spec.sat != Saturation::Wrap {
             return declined(format!(
-                "a Cast {from:?} -> {:?} ({:?}) is not lowered: only a wrapping integer cast to the compute dtype {:?} is",
-                spec.to, spec.sat, self.dtype
+                "a Cast {from:?} -> {:?} ({:?}) is not lowered: only a wrapping integer cast is",
+                spec.to, spec.sat
             ));
         }
-        let t = self.t;
+        // The destination's own SPIR-V type (the compute dtype, or an 8/16/64-bit storage type).
+        let t = self.b.type_int(dst.bits(), u32::from(dst.is_signed()));
         if src == dst {
             return Ok(Spelling::Spelled(x.to_string()));
         }

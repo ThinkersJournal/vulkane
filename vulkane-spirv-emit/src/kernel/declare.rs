@@ -5,6 +5,7 @@ use rspirv::dr::Operand;
 use rspirv::spirv::{BuiltIn, Capability, Decoration, StorageClass, Word};
 use unpopped::exec::{Extent, MemorySpace};
 use unpopped::kernel::{BufferRole, KernelFn, ParamKind};
+use unpopped_vocab::ElementKind;
 
 use crate::ops::Family;
 use crate::skeleton::{element_type, header};
@@ -63,6 +64,38 @@ pub(super) fn buffer_var(
     v
 }
 
+/// The 8- and 16-bit capabilities a kernel needs, declared only for the widths it uses: `Int8` /
+/// `Int16` for any such buffer element or local, and the storage-buffer access capability (with its
+/// extension) for a buffer element. A 32/64-bit kernel declares none of them.
+fn narrow_capabilities(b: &mut rspirv::dr::Builder, kernel: &KernelFn) {
+    let buffers = kernel.params.iter().filter_map(|p| match &p.kind {
+        ParamKind::Buffer { elem, .. } => Family::of(*elem),
+        _ => None,
+    });
+    let in_buffer = |w: u32| buffers.clone().any(|f| f.is_narrow() && f.bits() == w);
+    let anywhere = |w: u32| {
+        in_buffer(w)
+            || kernel
+                .locals
+                .iter()
+                .any(|l| Family::of(l.elem).is_some_and(|f| f.is_narrow() && f.bits() == w))
+    };
+    if anywhere(8) {
+        b.capability(Capability::Int8);
+    }
+    if anywhere(16) {
+        b.capability(Capability::Int16);
+    }
+    if in_buffer(8) {
+        b.capability(Capability::StorageBuffer8BitAccess);
+        b.extension("SPV_KHR_8bit_storage");
+    }
+    if in_buffer(16) {
+        b.capability(Capability::StorageBuffer16BitAccess);
+        b.extension("SPV_KHR_16bit_storage");
+    }
+}
+
 /// The module-level ids the function body refers to.
 pub(super) struct Module {
     pub(super) b: rspirv::dr::Builder,
@@ -79,6 +112,8 @@ pub(super) struct Module {
     /// The subgroup builtins, when the launch names a subgroup size range.
     pub(super) subgroup: Option<[Word; 3]>,
     pub(super) bufs: Vec<Word>,
+    /// The SPIR-V element type of each parameter's buffer (`0` for a scalar parameter).
+    pub(super) buf_elem: Vec<Word>,
     pub(super) allocs: Vec<Word>,
     /// `(local, spec constant id)` of each scalar parameter lowered as a specialization constant.
     pub(super) specs: Vec<(u32, Word)>,
@@ -87,6 +122,7 @@ pub(super) struct Module {
 /// What `declare_storage` made.
 pub(super) struct Storage {
     bufs: Vec<Word>,
+    buf_elem: Vec<Word>,
     allocs: Vec<Word>,
     specs: Vec<(u32, Word)>,
 }
@@ -99,28 +135,48 @@ pub(super) fn declare_storage(
     u32_t: Word,
     t: Word,
 ) -> Storage {
-    // One run-time array and one block type (rspirv shares them), each decorated exactly once.
-    let rt = b.type_runtime_array(t);
-    b.decorate(
-        rt,
-        Decoration::ArrayStride,
-        [Operand::LiteralBit32(fam.bytes())],
-    );
-    let blk = b.type_struct([rt]);
-    b.decorate(blk, Decoration::Block, []);
-    b.member_decorate(blk, 0, Decoration::Offset, [Operand::LiteralBit32(0)]);
-    let buf_ptr = b.type_pointer(None, StorageClass::StorageBuffer, blk);
-    let (mut bufs, mut specs) = (Vec::new(), Vec::new());
+    // One run-time array, block and pointer type per element type (rspirv shares identical types,
+    // so each is decorated exactly once); a kernel whose buffers are all the compute dtype has one.
+    let mut by_elem: Vec<(ElementKind, Word, Word)> = Vec::new();
+    let (mut bufs, mut buf_elem, mut specs) = (Vec::new(), Vec::new(), Vec::new());
     for (i, p) in kernel.params.iter().enumerate() {
         let id = u32::try_from(i).expect("parameter index fits u32");
         match &p.kind {
-            ParamKind::Buffer { role, .. } => bufs.push(buffer_var(b, buf_ptr, id, *role)),
+            ParamKind::Buffer { role, elem, .. } => {
+                let known = by_elem
+                    .iter()
+                    .find(|(e, ..)| e == elem)
+                    .map(|&(_, p, e)| (p, e));
+                let (buf_ptr, el) = known.unwrap_or_else(|| {
+                    let f = Family::of(*elem).expect("check_scope admits integer elements");
+                    let el = if f == fam {
+                        t
+                    } else {
+                        element_type(b, f, u32_t)
+                    };
+                    let rt = b.type_runtime_array(el);
+                    b.decorate(
+                        rt,
+                        Decoration::ArrayStride,
+                        [Operand::LiteralBit32(f.bytes())],
+                    );
+                    let blk = b.type_struct([rt]);
+                    b.decorate(blk, Decoration::Block, []);
+                    b.member_decorate(blk, 0, Decoration::Offset, [Operand::LiteralBit32(0)]);
+                    let ptr = b.type_pointer(None, StorageClass::StorageBuffer, blk);
+                    by_elem.push((*elem, ptr, el));
+                    (ptr, el)
+                });
+                bufs.push(buffer_var(b, buf_ptr, id, *role));
+                buf_elem.push(el);
+            }
             ParamKind::Scalar { local, .. } => {
                 // A specialization constant: its SpecId is the parameter's index, its default 1.
                 let spec = b.spec_constant_bit32(u32_t, 1);
                 b.decorate(spec, Decoration::SpecId, [Operand::LiteralBit32(id)]);
                 specs.push((*local, spec));
                 bufs.push(spec); // placeholder: a scalar parameter has no buffer
+                buf_elem.push(0);
             }
             _ => unreachable!("check_scope admits buffers and extent scalars only"),
         }
@@ -142,6 +198,7 @@ pub(super) fn declare_storage(
     }
     Storage {
         bufs,
+        buf_elem,
         allocs,
         specs,
     }
@@ -150,6 +207,7 @@ pub(super) fn declare_storage(
 /// Declare types, builtins, buffers and workgroup arrays for `kernel`.
 pub(super) fn declare(kernel: &KernelFn, fam: Family) -> Module {
     let mut b = header(fam);
+    narrow_capabilities(&mut b, kernel);
     let glsl = b.ext_inst_import("GLSL.std.450");
     let void = b.type_void();
     let fn_ty = b.type_function(void, []);
@@ -162,6 +220,7 @@ pub(super) fn declare(kernel: &KernelFn, fam: Family) -> Module {
     let subgroup = subgroup_builtins(&mut b, kernel, u32_t);
     let Storage {
         bufs,
+        buf_elem,
         allocs,
         specs,
     } = declare_storage(&mut b, kernel, fam, u32_t, t);
@@ -179,6 +238,7 @@ pub(super) fn declare(kernel: &KernelFn, fam: Family) -> Module {
         group_id,
         subgroup,
         bufs,
+        buf_elem,
         allocs,
         specs,
     }
