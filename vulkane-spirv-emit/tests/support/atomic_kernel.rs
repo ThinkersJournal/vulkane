@@ -22,6 +22,7 @@ use unpopped_vocab::ElementKind::U32;
 
 pub(crate) const BLOCK: u32 = 64;
 pub(crate) const BLOCKS: u32 = 16;
+#[allow(dead_code)] // the unit tests do not use it; the live test does
 pub(crate) const THREADS: u32 = BLOCK * BLOCKS;
 pub(crate) const SENTINEL: u32 = 0xAAAA_AAAA;
 
