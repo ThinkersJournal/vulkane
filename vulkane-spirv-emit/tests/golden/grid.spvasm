@@ -1,0 +1,112 @@
+; SPIR-V
+; Version: 1.3
+; Generator: rspirv
+; Bound: 91
+OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %15 "grid3d" %8 %9
+OpExecutionMode %15 LocalSize 4 3 2
+OpDecorate %8 BuiltIn LocalInvocationId
+OpDecorate %9 BuiltIn WorkgroupId
+OpDecorate %10 ArrayStride 4
+OpDecorate %11 Block
+OpMemberDecorate %11 0 Offset 0
+OpDecorate %13 DescriptorSet 0
+OpDecorate %13 Binding 0
+%2 = OpTypeVoid
+%3 = OpTypeFunction %2
+%4 = OpTypeBool
+%5 = OpTypeInt 32 0
+%6 = OpTypeVector %5 3
+%7 = OpTypePointer Input %6
+%8 = OpVariable  %7  Input
+%9 = OpVariable  %7  Input
+%10 = OpTypeRuntimeArray %5
+%11 = OpTypeStruct %10
+%12 = OpTypePointer StorageBuffer %11
+%13 = OpVariable  %12  StorageBuffer
+%14 = OpConstant  %5  0
+%17 = OpTypePointer Function %5
+%24 = OpConstant  %5  4
+%31 = OpConstant  %5  3
+%38 = OpConstant  %5  2
+%44 = OpConstant  %5  3
+%45 = OpConstant  %5  2
+%50 = OpConstant  %5  4
+%51 = OpConstant  %5  3
+%57 = OpConstant  %5  0
+%58 = OpTypePointer StorageBuffer %5
+%60 = OpConstant  %5  0
+%63 = OpConstant  %5  1
+%68 = OpConstant  %5  16
+%73 = OpConstant  %5  256
+%78 = OpConstant  %5  4096
+%83 = OpConstant  %5  65536
+%88 = OpConstant  %5  1048576
+%15 = OpFunction  %2  None %3
+%16 = OpLabel
+%18 = OpVariable  %17  Function
+%19 = OpVariable  %17  Function
+%20 = OpVariable  %17  Function
+%21 = OpVariable  %17  Function
+%22 = OpLoad  %6  %9
+%23 = OpCompositeExtract  %5  %22 0
+%25 = OpIMul  %5  %23 %24
+%26 = OpLoad  %6  %8
+%27 = OpCompositeExtract  %5  %26 0
+%28 = OpIAdd  %5  %25 %27
+OpStore %18 %28
+%29 = OpLoad  %6  %9
+%30 = OpCompositeExtract  %5  %29 1
+%32 = OpIMul  %5  %30 %31
+%33 = OpLoad  %6  %8
+%34 = OpCompositeExtract  %5  %33 1
+%35 = OpIAdd  %5  %32 %34
+OpStore %19 %35
+%36 = OpLoad  %6  %9
+%37 = OpCompositeExtract  %5  %36 2
+%39 = OpIMul  %5  %37 %38
+%40 = OpLoad  %6  %8
+%41 = OpCompositeExtract  %5  %40 2
+%42 = OpIAdd  %5  %39 %41
+OpStore %20 %42
+%43 = OpLoad  %5  %20
+%46 = OpIMul  %5  %44 %45
+%47 = OpIMul  %5  %43 %46
+%48 = OpLoad  %5  %19
+%49 = OpIAdd  %5  %47 %48
+%52 = OpIMul  %5  %50 %51
+%53 = OpIMul  %5  %49 %52
+%54 = OpLoad  %5  %18
+%55 = OpIAdd  %5  %53 %54
+OpStore %21 %55
+%56 = OpLoad  %5  %21
+%59 = OpAccessChain  %58  %13 %57 %56
+%61 = OpLoad  %6  %8
+%62 = OpCompositeExtract  %5  %61 0
+%64 = OpIMul  %5  %62 %63
+%65 = OpIAdd  %5  %60 %64
+%66 = OpLoad  %6  %8
+%67 = OpCompositeExtract  %5  %66 1
+%69 = OpIMul  %5  %67 %68
+%70 = OpIAdd  %5  %65 %69
+%71 = OpLoad  %6  %8
+%72 = OpCompositeExtract  %5  %71 2
+%74 = OpIMul  %5  %72 %73
+%75 = OpIAdd  %5  %70 %74
+%76 = OpLoad  %6  %9
+%77 = OpCompositeExtract  %5  %76 0
+%79 = OpIMul  %5  %77 %78
+%80 = OpIAdd  %5  %75 %79
+%81 = OpLoad  %6  %9
+%82 = OpCompositeExtract  %5  %81 1
+%84 = OpIMul  %5  %82 %83
+%85 = OpIAdd  %5  %80 %84
+%86 = OpLoad  %6  %9
+%87 = OpCompositeExtract  %5  %86 2
+%89 = OpIMul  %5  %87 %88
+%90 = OpIAdd  %5  %85 %89
+OpStore %59 %90
+OpReturn
+OpFunctionEnd

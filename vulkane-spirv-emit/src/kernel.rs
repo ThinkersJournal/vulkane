@@ -77,6 +77,17 @@ fn stmt_name(s: &Stmt) -> String {
         .collect()
 }
 
+/// A `u32` id value as the compute dtype: a bitcast at 32 bits. At 64 bits it stays the `u32` the IR
+/// types an execution id as; the kernel reaches its dtype through a `Cast`.
+fn widen(e: &mut Em, u32_t: Word, x: Word) -> Result<Word, LowerError> {
+    let t = e.t;
+    if t == u32_t || e.fam.is_wide() {
+        Ok(x)
+    } else {
+        lo(e.b.bitcast(t, None, x))
+    }
+}
+
 /// Everything the statement walk needs: the expression emitter and the module-level ids.
 struct Kc<'k> {
     kernel: &'k KernelFn,
@@ -115,12 +126,7 @@ impl Kc<'_> {
         let v = lo(e.b.load(self.vec3, None, var, None, []))?;
         let x =
             lo(e.b.composite_extract(self.u32_t, None, v, [u32::from(axis)]))?;
-        let t = e.t;
-        let x = if t == self.u32_t {
-            x
-        } else {
-            lo(e.b.bitcast(t, None, x))?
-        };
+        let x = widen(&mut e, self.u32_t, x)?;
         Ok(Spelling::Spelled(x.to_string()))
     }
 
@@ -134,12 +140,7 @@ impl Kc<'_> {
         };
         let mut e = self.em.borrow_mut();
         let x = lo(e.b.load(self.u32_t, None, var, None, []))?;
-        let t = e.t;
-        let x = if t == self.u32_t {
-            x
-        } else {
-            lo(e.b.bitcast(t, None, x))?
-        };
+        let x = widen(&mut e, self.u32_t, x)?;
         Ok(Spelling::Spelled(x.to_string()))
     }
 
@@ -155,11 +156,13 @@ impl Kc<'_> {
                 } else {
                     self.grid
                 };
+                let dim = v[usize::from(a)];
+                if self.em.borrow().fam.is_wide() {
+                    // An execution id is a `u32`; a wide kernel casts it to its dtype.
+                    return Ok(Spelling::Spelled(self.u32_const(dim).to_string()));
+                }
                 let dtype = self.em.borrow().dtype;
-                Ok(self
-                    .em
-                    .borrow_mut()
-                    .constant_int(i64::from(v[usize::from(a)]), dtype))
+                Ok(self.em.borrow_mut().constant_int(i64::from(dim), dtype))
             }
             ExecId::LaneId => self.subgroup_builtin(0),
             ExecId::SubgroupId => self.subgroup_builtin(1),
@@ -351,6 +354,8 @@ fn init_spec_locals(m: &mut Module, locals: &[Word]) -> Result<(), LowerError> {
     for &(local, spec) in &m.specs {
         let v = if m.t == m.u32_t {
             spec
+        } else if m.fam.is_wide() {
+            lo(m.b.u_convert(m.t, None, spec))?
         } else {
             lo(m.b.bitcast(m.t, None, spec))?
         };

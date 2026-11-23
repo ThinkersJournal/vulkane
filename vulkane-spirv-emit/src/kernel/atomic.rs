@@ -17,7 +17,7 @@ use unpopped::exec::{MemorySpace, Scope};
 use unpopped::kernel::{AtomicOp, MemoryOrder, Place, Stmt};
 
 use super::{Kc, refuse};
-use crate::ops::{Family, lo};
+use crate::ops::lo;
 
 impl Kc<'_> {
     /// The SPIR-V scope of an atomic's IR scope, or a decline.
@@ -67,6 +67,12 @@ impl Kc<'_> {
 
     /// One atomic read-modify-write or compare-exchange statement.
     pub(super) fn atomic(&self, s: &Stmt) -> Result<(), LowerError> {
+        if self.em.borrow().fam.is_wide() {
+            return Err(refuse(
+                self.kernel,
+                "a 64-bit atomic needs Int64Atomics, which is not lowered yet",
+            ));
+        }
         match s {
             Stmt::AtomicRmw {
                 op,
@@ -106,7 +112,7 @@ impl Kc<'_> {
         let sem = self.atomic_semantics(place, order)?;
         let ptr = self.pointer(place)?;
         let v = self.expr(value)?;
-        let signed = self.em.borrow().fam == Family::I32;
+        let signed = self.em.borrow().fam.is_signed();
         let (t, sc, sm) = (self.t(), self.u32_const(spv as u32), self.u32_const(sem));
         let mut e = self.em.borrow_mut();
         let b = &mut e.b;

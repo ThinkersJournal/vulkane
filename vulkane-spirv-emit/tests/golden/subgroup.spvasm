@@ -1,0 +1,60 @@
+; SPIR-V
+; Version: 1.3
+; Generator: rspirv
+; Bound: 38
+OpCapability Shader
+OpCapability GroupNonUniform
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %19 "subgroup_ids" %8 %9 %11 %12 %13
+OpExecutionMode %19 LocalSize 128 1 1
+OpDecorate %8 BuiltIn LocalInvocationId
+OpDecorate %9 BuiltIn WorkgroupId
+OpDecorate %11 BuiltIn SubgroupLocalInvocationId
+OpDecorate %12 BuiltIn SubgroupId
+OpDecorate %13 BuiltIn SubgroupSize
+OpDecorate %14 ArrayStride 4
+OpDecorate %15 Block
+OpMemberDecorate %15 0 Offset 0
+OpDecorate %17 DescriptorSet 0
+OpDecorate %17 Binding 0
+%2 = OpTypeVoid
+%3 = OpTypeFunction %2
+%4 = OpTypeBool
+%5 = OpTypeInt 32 0
+%6 = OpTypeVector %5 3
+%7 = OpTypePointer Input %6
+%8 = OpVariable  %7  Input
+%9 = OpVariable  %7  Input
+%10 = OpTypePointer Input %5
+%11 = OpVariable  %10  Input
+%12 = OpVariable  %10  Input
+%13 = OpVariable  %10  Input
+%14 = OpTypeRuntimeArray %5
+%15 = OpTypeStruct %14
+%16 = OpTypePointer StorageBuffer %15
+%17 = OpVariable  %16  StorageBuffer
+%18 = OpConstant  %5  0
+%21 = OpTypePointer Function %5
+%26 = OpConstant  %5  0
+%27 = OpTypePointer StorageBuffer %5
+%31 = OpConstant  %5  256
+%35 = OpConstant  %5  65536
+%19 = OpFunction  %2  None %3
+%20 = OpLabel
+%22 = OpVariable  %21  Function
+%23 = OpLoad  %6  %8
+%24 = OpCompositeExtract  %5  %23 0
+OpStore %22 %24
+%25 = OpLoad  %5  %22
+%28 = OpAccessChain  %27  %17 %26 %25
+%29 = OpLoad  %5  %11
+%30 = OpLoad  %5  %12
+%32 = OpIMul  %5  %30 %31
+%33 = OpIAdd  %5  %29 %32
+%34 = OpLoad  %5  %13
+%36 = OpIMul  %5  %34 %35
+%37 = OpIAdd  %5  %33 %36
+OpStore %28 %37
+OpReturn
+OpFunctionEnd

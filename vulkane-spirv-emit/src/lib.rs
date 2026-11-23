@@ -45,6 +45,7 @@
 //!   `Acosh`, `Atanh`, `Copysign`, `Nextafter`, `Fma`, `Cast`, `Bitcast`, so the emitters can be
 //!   checked against each other on the same ops.
 
+mod cast;
 mod kernel;
 mod ops;
 mod patent_decline;
@@ -82,7 +83,8 @@ pub const WORKGROUP_SIZE: u32 = 256;
 /// Vulkan 1.1's mandatory shader model except `F64`, whose `shaderFloat64` feature the consumer
 /// enables (named in the module docs), so there is no target field to read.
 fn dtype_ok(dt: ElementKind, _target: TargetId) -> DtypeSupport {
-    if Family::of(dt).is_some() {
+    // 64-bit integers are kernel-only (`lower_kernel`): a plan still declines them.
+    if Family::of(dt).is_some_and(|f| !f.is_wide()) {
         DtypeSupport::Supported
     } else {
         DtypeSupport::Unsupported
@@ -242,8 +244,15 @@ pub(crate) fn lower_body(
         .constant(&constant)
         .const_int(&const_int)
         .temp(&temp);
+    let cast = |x: String, from: ElementKind, spec: unpopped::ir::CastSpec| {
+        let mut e = em.borrow_mut();
+        let x = e.resolve(&x);
+        e.int_cast(x, from, spec)
+    };
+    // Spelling a hoisted temporary needs no type name here (the `temp` seam emits no text).
+    let type_name = |_t: ElementKind| Some(String::new());
     let lowering = match kernel {
-        Some(k) => with_kernel_seams(lowering, k),
+        Some(k) => with_kernel_seams(lowering.cast(&cast).type_name(&type_name), k),
         None => lowering,
     };
     let (prelude, root) = lower_dag(&ExprDag::from_expr(body), "spirv", &lowering.build())?;
@@ -304,3 +313,5 @@ mod tests;
 
 #[cfg(test)]
 mod kernel_tests;
+#[cfg(test)]
+mod kernel_wide_tests;

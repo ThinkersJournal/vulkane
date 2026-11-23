@@ -32,6 +32,9 @@ pub(crate) fn header(fam: Family) -> Builder {
     if fam == Family::F64 {
         b.capability(Capability::Float64);
     }
+    if fam.is_wide() {
+        b.capability(Capability::Int64);
+    }
     if fam.is_float() {
         b.capability(Capability::DenormPreserve);
         b.extension("SPV_KHR_float_controls");
@@ -47,6 +50,8 @@ pub(crate) fn element_type(b: &mut Builder, fam: Family, u32_t: Word) -> Word {
         Family::F64 => b.type_float(64, None),
         Family::I32 => b.type_int(32, 1),
         Family::U32 => u32_t,
+        Family::I64 => b.type_int(64, 1),
+        Family::U64 => b.type_int(64, 0),
     }
 }
 

@@ -14,7 +14,7 @@ pub(super) fn check_scope(kernel: &KernelFn) -> Result<(Family, [u32; 3], [u32; 
         detail: format!("check_kernel refused kernel `{}`: {e:?}", kernel.name),
     })?;
     let fam = match Family::of(kernel.compute) {
-        Some(f @ (Family::I32 | Family::U32)) => f,
+        Some(f) if !f.is_float() => f,
         _ => {
             return Err(refuse(
                 kernel,

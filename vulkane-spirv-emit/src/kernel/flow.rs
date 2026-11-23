@@ -26,7 +26,7 @@ use unpopped::ir::ScalarExpr;
 use unpopped::kernel::{Block, Stmt};
 
 use super::{Kc, refuse};
-use crate::ops::{Family, lo};
+use crate::ops::lo;
 use unpopped::backend::LowerError;
 
 /// What keeps a loop running: a counter against its bound, or a condition.
@@ -141,7 +141,7 @@ impl Kc<'_> {
             (e.t, e.fam)
         };
         let i = lo(self.em.borrow_mut().b.load(t, None, var, None, []))?;
-        if fam == Family::U32 {
+        if !fam.is_signed() {
             self.unsigned_test(i, end, step)
         } else {
             let up = self.directed(i, end, step, true)?;

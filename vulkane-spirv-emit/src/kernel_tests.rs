@@ -14,7 +14,7 @@ use crate::tests::assert_valid;
 const N: u32 = 64;
 
 #[path = "../tests/support/reverse_kernel.rs"]
-mod reverse_kernel;
+pub(crate) mod reverse_kernel;
 
 /// The block-reverse kernel over `N` threads with a static shared array.
 fn reverse(with_barrier: bool) -> KernelFn {
