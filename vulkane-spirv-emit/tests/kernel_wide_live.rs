@@ -84,3 +84,33 @@ fn a_lowering_through_32_bits_fails_the_check_in_every_result_column() {
         })));
     }
 }
+
+/// The host contract: a module declaring `Int64` needs the host to have enabled `shaderInt64`. The
+/// emitter cannot see the device and the driver is no guard: on this harness GPU a device created
+/// WITHOUT the feature (`Gpu::open`) runs the module without any error (reported below; the spec
+/// leaves it undefined). So the enforceable half is `required_features`, which names the feature
+/// from the module itself; it is asserted here, and the driver's behaviour is reported, not asserted.
+#[test]
+fn a_64_bit_module_names_shader_int64_and_the_driver_is_no_guard() {
+    common::require_serialization_lock();
+    let g = SpirV
+        .lower_kernel(&wide_kernel::wide_kernel(I64))
+        .expect("lowers");
+    let words = g.words().expect("words").to_vec();
+    let need = vulkane_spirv_emit::required_features(&words).expect("a module");
+    assert!(need.shader_int64 && !need.int64_atomics, "{need:?}");
+    let Some(gpu) = gpu::Gpu::open("spirv_kernel_wide_no_feature") else {
+        return; // skip already declared
+    };
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        gpu.run_grid(&g.name, &words, THREADS as usize * K * 2, [1, 1, 1])
+    }));
+    eprintln!(
+        "device WITHOUT shaderInt64, Int64 module: {}",
+        if outcome.is_ok() {
+            "ran, no error (driver is no guard)"
+        } else {
+            "refused"
+        }
+    );
+}

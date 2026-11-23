@@ -108,6 +108,8 @@ struct Kc<'k> {
     grid: [u32; 3],
     /// `(merge, continue)` labels of the enclosing loops, innermost last.
     loops: RefCell<Vec<(Word, Word)>>,
+    /// Whether `Int64Atomics` has been declared (a 64-bit atomic was lowered).
+    wide_atomics: std::cell::Cell<bool>,
 }
 
 impl Kc<'_> {
@@ -410,6 +412,7 @@ fn begin_body<'k>(
         block,
         grid,
         loops: RefCell::new(Vec::new()),
+        wide_atomics: std::cell::Cell::new(false),
     };
     Ok((kc, main))
 }

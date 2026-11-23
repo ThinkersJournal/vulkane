@@ -4,7 +4,7 @@
 //! stay declined, and 64-bit atomics are a decline by name until their own slice.
 
 use unpopped::backend::{Backend, DtypeSupport, LowerError};
-use unpopped::kernel::{AtomicOp, Block, BufferRole, MemoryOrder, Param, Place, Stmt};
+use unpopped::kernel::{Block, BufferRole, Param};
 use unpopped_vocab::ElementKind::{F32, F64, I64, U64};
 use unpopped_vocab::{ArchSku, TargetId};
 
@@ -13,6 +13,9 @@ use crate::tests::assert_valid;
 
 use crate::kernel_tests::reverse_kernel;
 
+#[path = "../tests/support/atomic_wide_kernel.rs"]
+#[allow(dead_code)]
+mod atomic_wide_kernel;
 #[path = "../tests/support/wide_kernel.rs"]
 #[allow(dead_code)]
 mod wide_kernel;
@@ -77,24 +80,38 @@ fn float_kernels_stay_a_typed_decline() {
 }
 
 #[test]
-fn a_64_bit_atomic_is_a_decline_by_name() {
-    let mut k = wide_kernel::wide_kernel(U64);
-    k.params[0] = Param::buffer("out", U64, BufferRole::ReadWrite, Some(1));
-    k.body.0.push(Stmt::AtomicRmw {
-        op: AtomicOp::Add,
-        place: Place::Logical {
-            buffer: 0,
-            coords: vec![unpopped::ir::ScalarExpr::ConstInt(0, U64)],
-        },
-        value: unpopped::ir::ScalarExpr::ConstInt(1, U64),
-        old: None,
-        order: MemoryOrder::Relaxed,
-        scope: unpopped::exec::Scope::Device,
-    });
-    match SpirV.lower_kernel(&k) {
-        Err(LowerError::UnsupportedKernel { detail }) => {
-            assert!(detail.contains("Int64Atomics"), "{detail}");
-        }
-        other => panic!("expected a decline, got {other:?}"),
+fn a_32_bit_kernel_requires_no_int64_feature() {
+    let g = SpirV
+        .lower_kernel(&reverse_kernel::reverse(64, true, false))
+        .expect("lowers");
+    let need = crate::required_features(g.words().expect("words")).expect("a module");
+    assert_eq!(need, crate::RequiredFeatures::default());
+}
+
+/// A 64-bit atomic declares `Int64Atomics` (once, only for such a kernel), uses the signed or
+/// unsigned instruction by the dtype, validates, and is named by `required_features`.
+#[test]
+fn a_64_bit_atomic_declares_int64_atomics_only_for_a_kernel_that_has_one() {
+    for (ty, max_op) in [(I64, "OpAtomicSMax"), (U64, "OpAtomicUMax")] {
+        let g = SpirV
+            .lower_kernel(&atomic_wide_kernel::atomic_wide_kernel(ty, false))
+            .expect("lowers");
+        assert_valid(&g);
+        assert_eq!(
+            g.source.matches("OpCapability Int64Atomics").count(),
+            1,
+            "{}",
+            g.source
+        );
+        assert!(g.source.contains("OpAtomicIAdd"), "{}", g.source);
+        assert!(g.source.contains(max_op), "{max_op}\n{}", g.source);
+        let need = crate::required_features(g.words().expect("words")).expect("a module");
+        assert!(need.shader_int64 && need.int64_atomics, "{need:?}");
     }
+    // Control: the same queries find nothing in a 64-bit kernel with no atomic.
+    let plain = SpirV
+        .lower_kernel(&wide_kernel::wide_kernel(I64))
+        .expect("lowers");
+    assert!(!plain.source.contains("Int64Atomics"), "{}", plain.source);
+    assert!(!plain.source.contains("OpAtomic"), "{}", plain.source);
 }

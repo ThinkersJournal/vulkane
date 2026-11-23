@@ -30,6 +30,18 @@
 //! must refuse the pipeline; whether a device does is a measurement (see `fishstringer-slang-emit`'s
 //! module docs), not something to read off feature bits.
 //!
+//! ## 64-bit integers (kernels only): a host contract
+//!
+//! `Backend::lower_kernel` lowers `I64`/`U64` kernels (capability `Int64`, plus `Int64Atomics` for a
+//! 64-bit atomic); the plan path (`Backend::lower`) still declines them. **A module using `Int64`
+//! requires the host to have enabled `shaderInt64` when it created the device**
+//! (`vulkane::safe::DeviceFeatures::new().with_shader_int64()` in `DeviceCreateInfo::enabled_features`;
+//! 64-bit atomics also need `with_shader_buffer_int64_atomics()` or `with_shader_shared_int64_atomics()`
+//! for the memory they touch). The emitter cannot see the device and the driver is no guard: a
+//! device created without the feature ran an `Int64` module without error on this lane's harness GPU.
+//! [`required_features`] reads a generated module's capabilities so the host can check first.
+//! A kernel's `Cast` is **wrapping only** (integer to the compute dtype); it is no saturating cast.
+//!
 //! ## v1 scope (honest boundary)
 //!
 //! - Dtypes: `F32`/`F32Strict`, `F64` (`Float64`), `I32`, `U32`. Everything else is declined through
@@ -46,6 +58,7 @@
 //!   checked against each other on the same ops.
 
 mod cast;
+mod features;
 mod kernel;
 mod ops;
 mod patent_decline;
@@ -68,6 +81,7 @@ use unpopped::plan::{KernelPlan, Schedule};
 use unpopped::types::Ty;
 use unpopped_vocab::{ElementKind, TargetId};
 
+pub use features::{RequiredFeatures, required_features};
 use ops::{Em, Family, lo};
 use skeleton::declare;
 

@@ -11,7 +11,7 @@
 //! fence does) add the memory class of the pointer. A `Private` array is no atomic target in SPIR-V
 //! and is declined.
 
-use rspirv::spirv::{MemorySemantics, Scope as SpvScope, Word};
+use rspirv::spirv::{Capability, MemorySemantics, Scope as SpvScope, Word};
 use unpopped::backend::LowerError;
 use unpopped::exec::{MemorySpace, Scope};
 use unpopped::kernel::{AtomicOp, MemoryOrder, Place, Stmt};
@@ -67,11 +67,9 @@ impl Kc<'_> {
 
     /// One atomic read-modify-write or compare-exchange statement.
     pub(super) fn atomic(&self, s: &Stmt) -> Result<(), LowerError> {
-        if self.em.borrow().fam.is_wide() {
-            return Err(refuse(
-                self.kernel,
-                "a 64-bit atomic needs Int64Atomics, which is not lowered yet",
-            ));
+        if self.em.borrow().fam.is_wide() && !self.wide_atomics.replace(true) {
+            // Declared once, and only for a kernel that has a 64-bit atomic.
+            self.em.borrow_mut().b.capability(Capability::Int64Atomics);
         }
         match s {
             Stmt::AtomicRmw {
