@@ -274,7 +274,7 @@ fn what_the_walker_does_not_lower_is_a_typed_decline_naming_it() {
     use unpopped::exec::{Extent, Scope};
     use unpopped::kernel::{BarrierKind, Stmt};
     let mut f = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
-    f.compute = unpopped_vocab::ElementKind::F16;
+    f.compute = unpopped_vocab::ElementKind::Bf16;
     declined(&f, "integer kernels only");
 
     // A dynamic extent from a local that no scalar parameter declares: `check_kernel` refuses it.

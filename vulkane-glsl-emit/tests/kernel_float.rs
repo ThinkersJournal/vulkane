@@ -29,7 +29,7 @@ mod gpu;
 use float_kernel::{Case, data, float_kernel, same};
 use glslang::{glslang_words, validates};
 use unpopped::backend::{Backend, GeneratedKernel};
-use unpopped_vocab::ElementKind::{self, F16, F32, F64};
+use unpopped_vocab::ElementKind::{self, Bf16, F32, F64};
 use vulkane::safe::DeviceFeatures;
 use vulkane_glsl_emit::Glsl;
 
@@ -216,9 +216,9 @@ fn what_the_vulkan_bounds_do_not_cover_is_a_typed_decline_naming_it() {
         }
     }
     let err = Glsl
-        .lower_kernel(&float_kernel(F16, Case::MulAdd))
-        .expect_err("F16 is not lowered");
-    assert!(format!("{err:?}").contains("F16"), "{err:?}");
+        .lower_kernel(&float_kernel(Bf16, Case::MulAdd))
+        .expect_err("Bf16 is not lowered");
+    assert!(format!("{err:?}").contains("Bf16"), "{err:?}");
     // Control: the same kernel at F64 lowers and spells `double`.
     let g = Glsl
         .lower_kernel(&float_kernel(F64, Case::MulAdd))

@@ -64,7 +64,8 @@ fn dtype(d: &dyn Dialect, kernel: &KernelFn) -> Result<(bool, bool), LowerError>
         ElementKind::U32 => Ok((false, false)),
         ElementKind::I64 if d.wide() => Ok((true, false)),
         ElementKind::U64 if d.wide() => Ok((false, false)),
-        ElementKind::F32 if d.float() && !d.double() => Ok((false, true)),
+        ElementKind::F32 if d.float() && !d.double() && !d.half() => Ok((false, true)),
+        ElementKind::F16 if d.float() && d.half() => Ok((false, true)),
         ElementKind::F64 if d.float() && d.double() => Ok((false, true)),
         other => Err(refuse(
             d.name(),
@@ -92,13 +93,15 @@ fn dtype(d: &dyn Dialect, kernel: &KernelFn) -> Result<(bool, bool), LowerError>
 /// Whether a buffer or local of type `elem` may appear in the kernel: the compute dtype, and in a
 /// float kernel the other float width and the 32-bit integers (the operands and results of a `Cast`).
 fn buffer_elem_ok(d: &dyn Dialect, kernel: &KernelFn, elem: ElementKind) -> bool {
+    let other_float = matches!(kernel.compute, ElementKind::F32 | ElementKind::F64)
+        && matches!(elem, ElementKind::F32 | ElementKind::F64);
     elem == kernel.compute
         || (d.float()
-            && matches!(kernel.compute, ElementKind::F32 | ElementKind::F64)
             && matches!(
-                elem,
-                ElementKind::F32 | ElementKind::F64 | ElementKind::I32 | ElementKind::U32
-            ))
+                kernel.compute,
+                ElementKind::F32 | ElementKind::F64 | ElementKind::F16
+            )
+            && (other_float || matches!(elem, ElementKind::I32 | ElementKind::U32)))
 }
 
 /// One buffer parameter, or a decline.
