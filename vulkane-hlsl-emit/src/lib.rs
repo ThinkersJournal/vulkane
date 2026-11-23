@@ -23,6 +23,9 @@
 //! collide. Declaration order gives bindings 0, 1, ..., N (inputs, then the output), the same layout
 //! the Slang emitter has.
 //!
+//! A kernel touching a float type is a typed decline here, not the Slang emitter's text: HLSL cannot
+//! declare `SignedZeroInfNanPreserve` (see `float_kernel_refusal`).
+//!
 //! The scope and the declined set are the Slang emitter's: scalar elementwise, no params, no
 //! f16/bf16, no polyfilled ops. A decline from `Slang` is returned unchanged except that its text
 //! still says `slang backend`; the variant is what callers match on.
@@ -109,6 +112,38 @@ fn retarget_kernel(mut k: GeneratedKernel) -> GeneratedKernel {
     k
 }
 
+/// Why a kernel touching a float type is not lowered, or `None` for a kernel with none.
+///
+/// `fishstringer-slang-emit` would write such a kernel as plain HLSL, but the text could not carry
+/// what the SPIR-V emitter (and the GLSL arm) guarantee for a float kernel: IEEE NaN, infinity and
+/// signed-zero handling (`SignedZeroInfNanPreserve`) and no fused multiply-add (`precise`). Measured
+/// with `dxc` 1.9.0.5347 (`tests/kernel_float.rs` pins it): `precise` becomes `NoContraction` and
+/// `-denorm preserve` becomes `DenormPreserve`, but no source attribute or flag requests
+/// `SignedZeroInfNanPreserve` (`[[vk::ext_execution_mode(..)]]` is a parse error), so the kernel
+/// would run with whatever the driver chooses and could not be checked against the oracle. Declined
+/// by name until `dxc` can spell it.
+fn float_kernel_refusal(kernel: &unpopped::kernel::KernelFn) -> Option<String> {
+    use unpopped::kernel::ParamKind;
+    let float = |t: ElementKind| {
+        matches!(
+            t,
+            ElementKind::F16 | ElementKind::Bf16 | ElementKind::F32 | ElementKind::F64
+        )
+    };
+    let params = kernel.params.iter().filter_map(|p| match &p.kind {
+        ParamKind::Buffer { elem, .. } => Some(*elem),
+        ParamKind::Scalar { ty, .. } => Some(*ty),
+        _ => None,
+    });
+    let found = std::iter::once(kernel.compute)
+        .chain(params)
+        .chain(kernel.locals.iter().map(|l| l.elem))
+        .find(|t| float(*t))?;
+    Some(format!(
+        "a {found:?} kernel is not lowered: HLSL has no spelling for SignedZeroInfNanPreserve (dxc 1.9 accepts `precise` and `-denorm preserve` only), so NaN, infinity and signed-zero handling would be the driver's choice, not the oracle's"
+    ))
+}
+
 impl Backend for Hlsl {
     fn name(&self) -> &str {
         "hlsl"
@@ -119,6 +154,11 @@ impl Backend for Hlsl {
     ) -> Result<GeneratedKernel, LowerError> {
         if patent_decline::is_declined(kernel) {
             return Err(patent_decline::refuse_kernel(self.name(), kernel));
+        }
+        if let Some(why) = float_kernel_refusal(kernel) {
+            return Err(LowerError::UnsupportedKernel {
+                detail: format!("hlsl backend: {why} (kernel `{}`)", kernel.name),
+            });
         }
         Slang.lower_kernel(kernel).map(retarget_kernel)
     }
