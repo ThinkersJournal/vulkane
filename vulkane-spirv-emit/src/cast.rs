@@ -8,6 +8,8 @@
 //!   declares the `RoundingModeRTE` execution mode at the result's width, so the device must round
 //!   to nearest even (Vulkan's table calls conversions "correctly rounded"; the mode removes any
 //!   doubt about which rounding). Ties (`2^24 + 1`) are tested on a device.
+//! - **integer to and from half**: integer to half is `NearestEven` through `f32` (see `int_to_float`),
+//!   half to integer is the float-to-integer rule below with the half's own bounds.
 //! - **float to float**: widening (`F32` to `F64`) is exact. Narrowing (`F64` to `F32`) is
 //!   `NearestEven` with `Wrap` (overflow to infinity, NaN stays NaN) under `RoundingModeRTE`;
 //!   `ClampFinite` and the other rounding modes are declined.
@@ -60,6 +62,9 @@ impl Em {
         let ty = self.float_type(f);
         if f == Family::F64 {
             self.b.constant_bit64(ty, v.to_bits())
+        } else if f == Family::F16 {
+            let bits = crate::half::exact_bits(v).expect("a half bound the cast makes is exact");
+            self.b.constant_bit32(ty, u32::from(bits))
         } else {
             self.b.constant_bit32(ty, (v as f32).to_bits())
         }
@@ -77,12 +82,6 @@ impl Em {
         };
         if src == dst {
             return spelled(x);
-        }
-        if src.is_half() != dst.is_half() && !(src.is_float() && dst.is_float()) {
-            return declined(format!(
-                "a Cast {from:?} -> {:?} between an integer and a half float is not lowered yet (half converts to and from F32/F64 only)",
-                spec.to
-            ));
         }
         match (src.is_float(), dst.is_float()) {
             (false, false) => self.int_to_int(x, src, dst, spec),
@@ -141,6 +140,21 @@ impl Em {
         }
         let t = self.float_type(dst);
         self.need_rte(dst);
+        if dst.is_half() {
+            // Through `f32`, then a narrowing `OpFConvert`: exact, because an integer below 2^24 is
+            // exact in `f32` (one rounding, to half), and one at or above 65520 is infinity in half
+            // whichever way `f32` rounded it. Measured on the harness device: a direct
+            // `OpConvertSToF` to half rounds toward zero (2051 gives 2050, not 2052) although
+            // `RoundingModeRTE` at 16 bits is declared and the device reports it, while the
+            // `OpFConvert` narrowing honours it.
+            let f32_t = self.b.type_float(32, None);
+            let mid = lo(if src.is_signed() {
+                self.b.convert_s_to_f(f32_t, None, x)
+            } else {
+                self.b.convert_u_to_f(f32_t, None, x)
+            })?;
+            return spelled(lo(self.b.f_convert(t, None, mid))?);
+        }
         spelled(lo(if src.is_signed() {
             self.b.convert_s_to_f(t, None, x)
         } else {
@@ -199,11 +213,22 @@ impl Em {
         let it = self.int_type(dst);
         let bl = self.boolean;
         let r = self.gl_on(ft, round, &[x])?;
-        let (lo_f, hi_f) = int_range(dst);
+        // A half tops out at 65504, below every 32-bit range end, so its bounds are the finite
+        // extremes themselves (inclusive); only an infinity is out of range.
+        let half = src.is_half();
+        let (lo_f, hi_f) = if half {
+            (if dst.is_signed() { -65504.0 } else { 0.0 }, 65504.0)
+        } else {
+            int_range(dst)
+        };
         let (lo_c, hi_c) = (self.float_const(src, lo_f), self.float_const(src, hi_f));
         let zero_f = self.float_const(src, 0.0);
         let ge_lo = lo(self.b.f_ord_greater_than_equal(bl, None, r, lo_c))?;
-        let lt_hi = lo(self.b.f_ord_less_than(bl, None, r, hi_c))?;
+        let lt_hi = lo(if half {
+            self.b.f_ord_less_than_equal(bl, None, r, hi_c)
+        } else {
+            self.b.f_ord_less_than(bl, None, r, hi_c)
+        })?;
         let in_range = lo(self.b.logical_and(bl, None, ge_lo, lt_hi))?;
         // Convert only an in-range value: out of range `OpConvertF*` is undefined.
         let safe = lo(self.b.select(ft, None, in_range, r, zero_f))?;
@@ -222,7 +247,11 @@ impl Em {
             self.b.constant_bit32(it, hi_i as u32),
         );
         let zero_i = self.b.constant_bit32(it, 0);
-        let ge_hi = lo(self.b.f_ord_greater_than_equal(bl, None, r, hi_c))?;
+        let ge_hi = lo(if half {
+            self.b.f_ord_greater_than(bl, None, r, hi_c)
+        } else {
+            self.b.f_ord_greater_than_equal(bl, None, r, hi_c)
+        })?;
         let lt_lo = lo(self.b.f_ord_less_than(bl, None, r, lo_c))?;
         let below = lo(self.b.select(it, None, lt_lo, lo_k, conv))?;
         let above = lo(self.b.select(it, None, ge_hi, hi_k, below))?;
