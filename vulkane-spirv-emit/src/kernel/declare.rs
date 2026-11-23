@@ -2,7 +2,7 @@
 //! Module-level declarations for a kernel: types, builtins, storage buffers, workgroup arrays.
 
 use rspirv::dr::Operand;
-use rspirv::spirv::{BuiltIn, Decoration, StorageClass, Word};
+use rspirv::spirv::{BuiltIn, Capability, Decoration, StorageClass, Word};
 use unpopped::exec::{Extent, MemorySpace};
 use unpopped::kernel::{BufferRole, KernelFn, ParamKind};
 
@@ -15,6 +15,34 @@ pub(super) fn builtin_var(b: &mut rspirv::dr::Builder, vec3: Word, which: BuiltI
     let v = b.variable(ptr, None, StorageClass::Input, None);
     b.decorate(v, Decoration::BuiltIn, [Operand::BuiltIn(which)]);
     v
+}
+
+/// An `Input` builtin variable of `u32` type.
+fn scalar_builtin(b: &mut rspirv::dr::Builder, u32_t: Word, which: BuiltIn) -> Word {
+    let ptr = b.type_pointer(None, StorageClass::Input, u32_t);
+    let v = b.variable(ptr, None, StorageClass::Input, None);
+    b.decorate(v, Decoration::BuiltIn, [Operand::BuiltIn(which)]);
+    v
+}
+
+/// The subgroup builtins `[SubgroupLocalInvocationId, SubgroupId, SubgroupSize]`, declared (with the
+/// `GroupNonUniform` capability) only for a launch that names a subgroup size range, which is what
+/// `check_kernel` requires of a kernel reading them.
+fn subgroup_builtins(
+    b: &mut rspirv::dr::Builder,
+    kernel: &KernelFn,
+    u32_t: Word,
+) -> Option<[Word; 3]> {
+    kernel.launch.as_ref()?.subgroup?;
+    b.capability(Capability::GroupNonUniform);
+    Some(
+        [
+            BuiltIn::SubgroupLocalInvocationId,
+            BuiltIn::SubgroupId,
+            BuiltIn::SubgroupSize,
+        ]
+        .map(|w| scalar_builtin(b, u32_t, w)),
+    )
 }
 
 /// The storage-buffer variable of a parameter at binding `binding`.
@@ -48,6 +76,8 @@ pub(super) struct Module {
     pub(super) vec3: Word,
     pub(super) local_id: Word,
     pub(super) group_id: Word,
+    /// The subgroup builtins, when the launch names a subgroup size range.
+    pub(super) subgroup: Option<[Word; 3]>,
     pub(super) bufs: Vec<Word>,
     pub(super) allocs: Vec<Word>,
     /// `(local, spec constant id)` of each scalar parameter lowered as a specialization constant.
@@ -129,6 +159,7 @@ pub(super) fn declare(kernel: &KernelFn, fam: Family) -> Module {
     let vec3 = b.type_vector(u32_t, 3);
     let local_id = builtin_var(&mut b, vec3, BuiltIn::LocalInvocationId);
     let group_id = builtin_var(&mut b, vec3, BuiltIn::WorkgroupId);
+    let subgroup = subgroup_builtins(&mut b, kernel, u32_t);
     let Storage {
         bufs,
         allocs,
@@ -146,6 +177,7 @@ pub(super) fn declare(kernel: &KernelFn, fam: Family) -> Module {
         vec3,
         local_id,
         group_id,
+        subgroup,
         bufs,
         allocs,
         specs,

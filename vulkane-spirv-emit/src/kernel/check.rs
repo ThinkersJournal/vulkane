@@ -34,9 +34,33 @@ pub(super) fn check_scope(kernel: &KernelFn) -> Result<(Family, [u32; 3], [u32; 
     if launch.grid_dims.is_some() {
         return Err(refuse(kernel, "a parameter-dependent grid is not lowered"));
     }
+    check_subgroup_range(kernel, launch)?;
     check_allocs(kernel, fam)?;
     check_params_and_locals(kernel, fam)?;
     Ok((fam, launch.block, launch.grid))
+}
+
+/// A subgroup size range must hold a size a Vulkan device can have: a power of two from 1 to 128.
+/// SPIR-V for Vulkan cannot pin the size (the host does, with `required_subgroup_size` from the
+/// launch's range), so a range no device could satisfy is refused here by name.
+fn check_subgroup_range(
+    kernel: &KernelFn,
+    launch: &unpopped::exec::LaunchShape,
+) -> Result<(), LowerError> {
+    let Some(sg) = launch.subgroup else {
+        return Ok(());
+    };
+    let possible = sg.min >= 1 && (sg.min..=sg.max.min(128)).any(u32::is_power_of_two);
+    if possible {
+        return Ok(());
+    }
+    Err(refuse(
+        kernel,
+        format!(
+            "the required subgroup size range {}..={} holds no power of two up to 128, so no Vulkan device can run it",
+            sg.min, sg.max
+        ),
+    ))
 }
 
 /// The index of the scalar parameter that declares `local`, when its type is the compute dtype.
