@@ -3,7 +3,7 @@
 
 use rspirv::dr::Operand;
 use rspirv::spirv::{BuiltIn, Decoration, StorageClass, Word};
-use unpopped::exec::Extent;
+use unpopped::exec::{Extent, MemorySpace};
 use unpopped::kernel::{BufferRole, KernelFn, ParamKind};
 
 use crate::ops::Family;
@@ -102,9 +102,13 @@ pub(super) fn declare_storage(
             Extent::Param(l) => specs.iter().find(|(loc, _)| *loc == l).expect("checked").1,
             _ => unreachable!("check_scope admits static and parameter extents only"),
         };
+        let class = match a.space {
+            MemorySpace::Private => StorageClass::Private,
+            _ => StorageClass::Workgroup,
+        };
         let arr = b.type_array(t, len);
-        let ptr = b.type_pointer(None, StorageClass::Workgroup, arr);
-        allocs.push(b.variable(ptr, None, StorageClass::Workgroup, None));
+        let ptr = b.type_pointer(None, class, arr);
+        allocs.push(b.variable(ptr, None, class, None));
     }
     Storage {
         bufs,

@@ -52,7 +52,17 @@ pub(super) fn extent_param(kernel: &KernelFn, local: u32, fam: Family) -> Option
 pub(super) fn check_allocs(kernel: &KernelFn, fam: Family) -> Result<(), LowerError> {
     for a in &kernel.allocs {
         match (a.space, a.extent) {
-            (MemorySpace::Shared, Extent::Static(_)) if Family::of(a.elem) == Some(fam) => {}
+            (MemorySpace::Shared | MemorySpace::Private, Extent::Static(_))
+                if Family::of(a.elem) == Some(fam) => {}
+            (MemorySpace::Constant, _) => {
+                return Err(refuse(
+                    kernel,
+                    format!(
+                        "allocation `{}` is in the Constant space, which an allocation cannot initialise (ROADMAP 8k: a constant table needs an initialiser the IR does not carry)",
+                        a.name
+                    ),
+                ));
+            }
             (MemorySpace::Shared, Extent::Param(l))
                 if Family::of(a.elem) == Some(fam) && extent_param(kernel, l, fam).is_some() => {}
             (MemorySpace::Shared, Extent::Param(l)) => {

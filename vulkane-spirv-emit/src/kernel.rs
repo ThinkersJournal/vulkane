@@ -51,7 +51,7 @@ use rspirv::spirv::{
     StorageClass, Word,
 };
 use unpopped::backend::{Decline, DeclinedOp, GeneratedKernel, LowerError, Spelling};
-use unpopped::exec::{ExecId, Scope};
+use unpopped::exec::{ExecId, MemorySpace, Scope};
 use unpopped::ir::ScalarExpr;
 use unpopped::kernel::{BarrierKind, KernelFn, MemoryOrder, Place, Stmt};
 use unpopped::types::Ty;
@@ -184,9 +184,14 @@ impl Kc<'_> {
             }
             Place::Alloc { alloc, index } => {
                 let idx = self.expr(index)?;
+                let slot = usize::try_from(*alloc).expect("alloc id fits usize");
+                let class = match self.kernel.allocs[slot].space {
+                    MemorySpace::Private => StorageClass::Private,
+                    _ => StorageClass::Workgroup,
+                };
                 let mut e = self.em.borrow_mut();
-                let ptr_t = e.b.type_pointer(None, StorageClass::Workgroup, t);
-                let base = self.allocs[usize::try_from(*alloc).expect("alloc id fits usize")];
+                let ptr_t = e.b.type_pointer(None, class, t);
+                let base = self.allocs[slot];
                 lo(e.b.access_chain(ptr_t, None, base, [idx]))
             }
             other => Err(refuse(

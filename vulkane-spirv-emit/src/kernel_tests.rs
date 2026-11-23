@@ -284,3 +284,57 @@ fn a_dynamic_extent_is_a_specialization_constant_sized_array() {
     let fixed = lower(&reverse(true)).expect("lowers");
     assert_eq!(count(&fixed.source, "OpSpecConstant"), 0);
 }
+
+#[path = "../tests/support/private_kernel.rs"]
+mod private_kernel;
+
+/// Row 8k: a `Private` array is a module-scope `Private` variable, not a `Workgroup` one.
+#[test]
+fn a_private_array_validates_and_is_private_storage() {
+    let k = private_kernel::private_index(N, unpopped::exec::MemorySpace::Private);
+    let g = lower(&k).expect("lowers");
+    assert_valid(&g);
+    assert_eq!(count(&g.source, "OpTypePointer Private"), 2, "{}", g.source);
+    assert_eq!(
+        count(&g.source, "OpTypePointer Workgroup"),
+        0,
+        "{}",
+        g.source
+    );
+    // Control: the same queries find Workgroup storage in the shared-array kernel, and not here.
+    let shared = lower(&reverse(true)).expect("lowers");
+    assert_eq!(
+        count(&shared.source, "OpTypePointer Workgroup"),
+        2,
+        "{}",
+        shared.source
+    );
+    assert_eq!(
+        count(&shared.source, "OpTypePointer Private"),
+        0,
+        "{}",
+        shared.source
+    );
+}
+
+/// Row 8k decline: a `Constant` allocation has no initialiser in the IR, so it is refused by name.
+#[test]
+fn a_constant_allocation_is_a_typed_decline() {
+    // Read-only, so `check_kernel` admits it and the decline is this emitter's own.
+    let mut k = private_kernel::private_index(N, unpopped::exec::MemorySpace::Constant);
+    k.body.0.retain(|s| {
+        !matches!(
+            s,
+            Stmt::Store {
+                place: unpopped::kernel::Place::Alloc { .. },
+                ..
+            }
+        )
+    });
+    match lower(&k) {
+        Err(LowerError::UnsupportedKernel { detail }) => {
+            assert!(detail.contains("Constant space"), "{detail}");
+        }
+        other => panic!("expected a decline, got {other:?}"),
+    }
+}
