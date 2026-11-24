@@ -150,6 +150,25 @@ impl Kc<'_> {
         Ok(Spelling::Spelled(x.to_string()))
     }
 
+    /// The subgroup builtin `which` (lane, subgroup index, size) as the compute dtype.
+    fn subgroup_builtin(&self, which: usize) -> Result<Spelling, LowerError> {
+        let Some(var) = self.subgroup.map(|v| v[which]) else {
+            return Ok(Spelling::Declined(Decline::UnsupportedOp {
+                op: DeclinedOp::Kernel,
+                why: "a subgroup id needs a launch that names a subgroup size range".to_string(),
+            }));
+        };
+        let mut e = self.em.borrow_mut();
+        let x = lo(e.b.load(self.u32_t, None, var, None, []))?;
+        let t = e.t;
+        let x = if t == self.u32_t {
+            x
+        } else {
+            lo(e.b.bitcast(t, None, x))?
+        };
+        Ok(Spelling::Spelled(x.to_string()))
+    }
+
     /// The spelling of an execution id.
     fn exec(&self, id: ExecId) -> Result<Spelling, LowerError> {
         let axis = |a: u8| (a < 3).then_some(usize::from(a));
