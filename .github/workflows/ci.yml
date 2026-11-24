@@ -1006,3 +1006,11 @@ jobs:
           echo
           echo "${{ matrix.crate.name }} does not compile on ${{ matrix.crate.below }}:"
           echo "${{ matrix.crate.msrv }} is necessary, not merely sufficient."
+
+  # ADVISORY (CireSnave 2026-10-23: "Roll out advisory-only, non-blocking CodeRipper
+  # checks everywhere."). Not a required check; no rule is silenced here. A new finding is
+  # a disposition (fix, or a reasoned entry), never a reason to switch the job off.
+  portfolio:
+    permissions:
+      contents: read
+    uses: ciresnave/coderipper/.github/workflows/portfolio.yml@dc45e3632ab9f471292458e5ccba5f375084a70a # installs CodeRipper 0.47.15 (CODERIPPER_VERSION at this SHA; coderipper main is 0.47.21)
