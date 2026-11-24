@@ -101,6 +101,15 @@ impl Gpu {
         })
     }
 
+    /// The subgroup size the device runs compute at (`VkPhysicalDeviceSubgroupProperties`).
+    #[allow(dead_code)]
+    pub(crate) fn subgroup_size(&self) -> u32 {
+        self.physical
+            .subgroup_properties()
+            .expect("a Vulkan 1.1 device reports its subgroup properties")
+            .subgroup_size
+    }
+
     /// One storage-buffer binding per buffer, in order, each covering `bytes`.
     /// With `uniform` (a buffer and its size), one more binding after them, a uniform buffer.
     fn bind(

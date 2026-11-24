@@ -284,3 +284,118 @@ fn a_dynamic_extent_is_a_specialization_constant_sized_array() {
     let fixed = lower(&reverse(true)).expect("lowers");
     assert_eq!(count(&fixed.source, "OpSpecConstant"), 0);
 }
+
+#[path = "../tests/support/private_kernel.rs"]
+mod private_kernel;
+
+/// Row 8k: a `Private` array is a module-scope `Private` variable, not a `Workgroup` one.
+#[test]
+fn a_private_array_validates_and_is_private_storage() {
+    let k = private_kernel::private_index(N, unpopped::exec::MemorySpace::Private);
+    let g = lower(&k).expect("lowers");
+    assert_valid(&g);
+    assert_eq!(count(&g.source, "OpTypePointer Private"), 2, "{}", g.source);
+    assert_eq!(
+        count(&g.source, "OpTypePointer Workgroup"),
+        0,
+        "{}",
+        g.source
+    );
+    // Control: the same queries find Workgroup storage in the shared-array kernel, and not here.
+    let shared = lower(&reverse(true)).expect("lowers");
+    assert_eq!(
+        count(&shared.source, "OpTypePointer Workgroup"),
+        2,
+        "{}",
+        shared.source
+    );
+    assert_eq!(
+        count(&shared.source, "OpTypePointer Private"),
+        0,
+        "{}",
+        shared.source
+    );
+}
+
+/// Row 8k decline: a `Constant` allocation has no initialiser in the IR, so it is refused by name.
+#[test]
+fn a_constant_allocation_is_a_typed_decline() {
+    // Read-only, so `check_kernel` admits it and the decline is this emitter's own.
+    let mut k = private_kernel::private_index(N, unpopped::exec::MemorySpace::Constant);
+    k.body.0.retain(|s| {
+        !matches!(
+            s,
+            Stmt::Store {
+                place: unpopped::kernel::Place::Alloc { .. },
+                ..
+            }
+        )
+    });
+    match lower(&k) {
+        Err(LowerError::UnsupportedKernel { detail }) => {
+            assert!(detail.contains("Constant space"), "{detail}");
+        }
+        other => panic!("expected a decline, got {other:?}"),
+    }
+}
+
+#[path = "../tests/support/atomic_kernel.rs"]
+mod atomic_kernel;
+
+/// Row 8d: the atomic kernel validates and holds each atomic instruction; the racy control swaps
+/// exactly one `OpAtomicIAdd` for plain memory traffic (the same query finds both counts).
+#[test]
+fn the_atomic_kernel_validates_and_the_racy_control_has_one_fewer_atomic_add() {
+    let atomic = lower(&atomic_kernel::atomic_kernel(false)).expect("lowers");
+    assert_valid(&atomic);
+    assert_eq!(
+        count(&atomic.source, "OpAtomicIAdd"),
+        2,
+        "{}",
+        atomic.source
+    );
+    assert_eq!(
+        count(&atomic.source, "OpAtomicUMin"),
+        1,
+        "{}",
+        atomic.source
+    );
+    assert_eq!(
+        count(&atomic.source, "OpAtomicCompareExchange"),
+        1,
+        "{}",
+        atomic.source
+    );
+    let racy = lower(&atomic_kernel::atomic_kernel(true)).expect("lowers");
+    assert_valid(&racy);
+    assert_eq!(count(&racy.source, "OpAtomicIAdd"), 1, "{}", racy.source);
+}
+
+/// Row 8d decline: no atomic on a `Private` array; `check_kernel` refuses it before this emitter does
+/// (the emitter keeps its own guard for the day that check moves).
+#[test]
+fn an_atomic_on_a_private_array_is_a_typed_decline() {
+    use unpopped::exec::{MemorySpace, Scope};
+    use unpopped::kernel::{AtomicOp, Place};
+    let mut k = private_kernel::private_index(N, MemorySpace::Private);
+    k.body.0.insert(
+        2,
+        Stmt::AtomicRmw {
+            op: AtomicOp::Add,
+            place: Place::Alloc {
+                alloc: 0,
+                index: c(0),
+            },
+            value: c(1),
+            old: None,
+            order: MemoryOrder::Relaxed,
+            scope: Scope::Block,
+        },
+    );
+    match lower(&k) {
+        Err(LowerError::UnsupportedKernel { detail }) => {
+            assert!(detail.contains("AtomicUnsupported"), "{detail}");
+        }
+        other => panic!("expected a decline, got {other:?}"),
+    }
+}

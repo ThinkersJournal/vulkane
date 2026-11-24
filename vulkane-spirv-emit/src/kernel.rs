@@ -38,6 +38,7 @@
 //! A barrier under thread-divergent control is refused by `check_kernel` (`BarrierDivergent`), which
 //! runs first, so it is a typed decline carrying the checker's answer and is never silently moved.
 
+mod atomic;
 mod check;
 mod declare;
 mod flow;
@@ -51,7 +52,7 @@ use rspirv::spirv::{
     StorageClass, Word,
 };
 use unpopped::backend::{Decline, DeclinedOp, GeneratedKernel, LowerError, Spelling};
-use unpopped::exec::{ExecId, Scope};
+use unpopped::exec::{ExecId, MemorySpace, Scope};
 use unpopped::ir::ScalarExpr;
 use unpopped::kernel::{BarrierKind, KernelFn, MemoryOrder, Place, Stmt};
 use unpopped::types::Ty;
@@ -84,6 +85,8 @@ struct Kc<'k> {
     vec3: Word,
     local_id: Word,
     group_id: Word,
+    /// `[SubgroupLocalInvocationId, SubgroupId, SubgroupSize]` when the launch names a subgroup range.
+    subgroup: Option<[Word; 3]>,
     /// One storage-buffer variable per parameter.
     bufs: Vec<Word>,
     /// One workgroup variable per allocation.
@@ -121,6 +124,25 @@ impl Kc<'_> {
         Ok(Spelling::Spelled(x.to_string()))
     }
 
+    /// The subgroup builtin `which` (lane, subgroup index, size) as the compute dtype.
+    fn subgroup_builtin(&self, which: usize) -> Result<Spelling, LowerError> {
+        let Some(var) = self.subgroup.map(|v| v[which]) else {
+            return Ok(Spelling::Declined(Decline::UnsupportedOp {
+                op: DeclinedOp::Kernel,
+                why: "a subgroup id needs a launch that names a subgroup size range".to_string(),
+            }));
+        };
+        let mut e = self.em.borrow_mut();
+        let x = lo(e.b.load(self.u32_t, None, var, None, []))?;
+        let t = e.t;
+        let x = if t == self.u32_t {
+            x
+        } else {
+            lo(e.b.bitcast(t, None, x))?
+        };
+        Ok(Spelling::Spelled(x.to_string()))
+    }
+
     /// The spelling of an execution id.
     fn exec(&self, id: ExecId) -> Result<Spelling, LowerError> {
         let axis = |a: u8| (a < 3).then_some(usize::from(a));
@@ -139,6 +161,9 @@ impl Kc<'_> {
                     .borrow_mut()
                     .constant_int(i64::from(v[usize::from(a)]), dtype))
             }
+            ExecId::LaneId => self.subgroup_builtin(0),
+            ExecId::SubgroupId => self.subgroup_builtin(1),
+            ExecId::SubgroupSize => self.subgroup_builtin(2),
             other => Ok(Spelling::Declined(Decline::UnsupportedOp {
                 op: DeclinedOp::Kernel,
                 why: format!("execution id {other:?} is not lowered by the spirv backend v1"),
@@ -184,9 +209,14 @@ impl Kc<'_> {
             }
             Place::Alloc { alloc, index } => {
                 let idx = self.expr(index)?;
+                let slot = usize::try_from(*alloc).expect("alloc id fits usize");
+                let class = match self.kernel.allocs[slot].space {
+                    MemorySpace::Private => StorageClass::Private,
+                    _ => StorageClass::Workgroup,
+                };
                 let mut e = self.em.borrow_mut();
-                let ptr_t = e.b.type_pointer(None, StorageClass::Workgroup, t);
-                let base = self.allocs[usize::try_from(*alloc).expect("alloc id fits usize")];
+                let ptr_t = e.b.type_pointer(None, class, t);
+                let base = self.allocs[slot];
                 lo(e.b.access_chain(ptr_t, None, base, [idx]))
             }
             other => Err(refuse(
@@ -246,6 +276,7 @@ impl Kc<'_> {
                 self.data(s)
             }
             Stmt::Barrier { .. } | Stmt::Fence { .. } => self.sync(s),
+            Stmt::AtomicRmw { .. } | Stmt::AtomicCas { .. } => self.atomic(s),
             Stmt::If { .. }
             | Stmt::For { .. }
             | Stmt::While { .. }
@@ -255,7 +286,7 @@ impl Kc<'_> {
             other => Err(refuse(
                 self.kernel,
                 format!(
-                    "`Stmt::{}` is not lowered (v1: Let, Load, Assign, Store, block/subgroup Barrier, Fence, control flow)",
+                    "`Stmt::{}` is not lowered (v1: Let, Load, Assign, Store, block/subgroup Barrier, Fence, 32-bit AtomicRmw/AtomicCas, control flow)",
                     stmt_name(other)
                 ),
             )),
@@ -367,6 +398,7 @@ fn begin_body<'k>(
         vec3: m.vec3,
         local_id: m.local_id,
         group_id: m.group_id,
+        subgroup: m.subgroup,
         bufs: m.bufs,
         allocs: m.allocs,
         locals,
@@ -382,18 +414,14 @@ pub(crate) fn lower(kernel: &KernelFn) -> Result<GeneratedKernel, LowerError> {
     let (fam, block, grid) = check_scope(kernel)?;
     let (kc, main) = begin_body(kernel, declare(kernel, fam), block, grid)?;
     let ended = kc.block(&kernel.body)?;
-    let (local_id, group_id) = (kc.local_id, kc.group_id);
+    let mut interface = vec![kc.local_id, kc.group_id];
+    interface.extend(kc.subgroup.into_iter().flatten());
     let mut e = kc.em.into_inner();
     if !ended {
         lo(e.b.ret())?;
     }
     lo(e.b.end_function())?;
-    e.b.entry_point(
-        ExecutionModel::GLCompute,
-        main,
-        &kernel.name,
-        [local_id, group_id],
-    );
+    e.b.entry_point(ExecutionModel::GLCompute, main, &kernel.name, interface);
     e.b.execution_mode(main, ExecutionMode::LocalSize, block);
     let module = e.b.module();
     let source = module.disassemble();
