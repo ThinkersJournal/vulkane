@@ -26,10 +26,16 @@
 //! A kernel touching a float type is a typed decline here, not the Slang emitter's text: HLSL cannot
 //! declare `SignedZeroInfNanPreserve` (see `float_kernel_refusal`).
 //!
+//! A kernel holding a 16-bit integer buffer or local (`I16`/`U16`) is the exception: `fishstringer-slang-emit`
+//! declines it, so this crate lowers it itself (`kernel_dialect`, the shared `vulkane-kernel-text` walker),
+//! needing `dxc -enable-16bit-types` ([`kernel_dxc_args`]); 8-bit integers stay a typed decline (`dxc` has
+//! no 8-bit type).
+//!
 //! The scope and the declined set are the Slang emitter's: scalar elementwise, no params, no
 //! f16/bf16, no polyfilled ops. A decline from `Slang` is returned unchanged except that its text
 //! still says `slang backend`; the variant is what callers match on.
 
+mod kernel_dialect;
 mod patent_decline;
 
 use fishstringer_slang_emit::Slang;
@@ -55,6 +61,14 @@ pub fn required_dxc_args(dtype: ElementKind) -> &'static [&'static str] {
         ElementKind::F32 | ElementKind::F32Strict => &["-denorm", "preserve"],
         _ => &[],
     }
+}
+
+/// The extra `dxc` arguments (beyond `-T cs_6_2 -E <entry> -spirv`) a kernel needs: `-enable-16bit-types`
+/// when it holds a 16-bit integer buffer or local (without it `int16_t` is a 32-bit alias and the SPIR-V
+/// has no 16-bit storage), none otherwise. The generated text names them on a `// dxc:` line too.
+#[must_use]
+pub fn kernel_dxc_args(kernel: &unpopped::kernel::KernelFn) -> &'static [&'static str] {
+    kernel_dialect::dxc_args(kernel)
 }
 
 /// Re-dialect a kernel the Slang emitter produced. Panics if the Slang output no longer has the
@@ -159,6 +173,13 @@ impl Backend for Hlsl {
             return Err(LowerError::UnsupportedKernel {
                 detail: format!("hlsl backend: {why} (kernel `{}`)", kernel.name),
             });
+        }
+        let narrow = kernel_dialect::narrow_elems(kernel);
+        if !narrow.is_empty() {
+            // `fishstringer-slang-emit` declines 8- and 16-bit integers by name; `dxc` has 16-bit ones
+            // (`-enable-16bit-types`) and no 8-bit ones, so this crate's own dialect lowers the 16-bit
+            // arm and declines the 8-bit one with the reason.
+            return kernel_dialect::lower(self.name(), kernel, &narrow);
         }
         Slang.lower_kernel(kernel).map(retarget_kernel)
     }
