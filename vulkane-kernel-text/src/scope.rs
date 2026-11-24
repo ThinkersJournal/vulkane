@@ -113,6 +113,19 @@ fn buffer_elem_ok(d: &dyn Dialect, kernel: &KernelFn, elem: ElementKind) -> bool
             && (other_float || matches!(elem, ElementKind::I32 | ElementKind::U32)))
 }
 
+/// The dialect's reason why an 8- or 16-bit integer `elem` has no spelling, phrased to follow a subject.
+fn narrow_reason(d: &dyn Dialect, elem: ElementKind) -> Option<String> {
+    if !matches!(
+        elem,
+        ElementKind::I8 | ElementKind::U8 | ElementKind::I16 | ElementKind::U16
+    ) || d.narrow_ints()
+    {
+        return None;
+    }
+    d.narrow_refusal()
+        .map(|why| format!("is a {elem:?}, an 8- or 16-bit integer: {why}"))
+}
+
 /// One buffer parameter, or a decline.
 fn buffer(d: &dyn Dialect, kernel: &KernelFn, i: usize) -> Result<Decl, LowerError> {
     let p = &kernel.params[i];
@@ -147,14 +160,25 @@ fn buffer(d: &dyn Dialect, kernel: &KernelFn, i: usize) -> Result<Decl, LowerErr
                 len_spec: None,
             })
         }
-        _ => Err(refuse(
-            d.name(),
-            kernel,
-            format!(
-                "parameter `{}` is not a flat buffer of the compute dtype",
-                p.name
-            ),
-        )),
+        _ => {
+            let narrow = match &p.kind {
+                ParamKind::Buffer { elem, .. } => narrow_reason(d, *elem),
+                _ => None,
+            };
+            Err(refuse(
+                d.name(),
+                kernel,
+                narrow.map_or_else(
+                    || {
+                        format!(
+                            "parameter `{}` is not a flat buffer of the compute dtype",
+                            p.name
+                        )
+                    },
+                    |why| format!("parameter `{}` {why}", p.name),
+                ),
+            ))
+        }
     }
 }
 
@@ -322,7 +346,10 @@ fn locals(d: &dyn Dialect, kernel: &KernelFn) -> Result<(), LowerError> {
         Some(i) => Err(refuse(
             d.name(),
             kernel,
-            format!("local {i} is not a scalar of the compute dtype"),
+            narrow_reason(d, kernel.locals[i].elem).map_or_else(
+                || format!("local {i} is not a scalar of the compute dtype"),
+                |why| format!("local {i} {why}"),
+            ),
         )),
         None => Ok(()),
     }
