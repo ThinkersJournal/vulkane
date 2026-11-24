@@ -1013,4 +1013,4 @@ jobs:
   portfolio:
     permissions:
       contents: read
-    uses: ciresnave/coderipper/.github/workflows/portfolio.yml@dc45e3632ab9f471292458e5ccba5f375084a70a # installs CodeRipper 0.47.15 (CODERIPPER_VERSION at this SHA; coderipper main is 0.47.21)
+    uses: ciresnave/coderipper/.github/workflows/portfolio.yml@56b8982c4c8105866db4e972335588a2e362cc69 # installs CodeRipper 0.48.0 (CODERIPPER_VERSION at this SHA; coderipper Cargo.toml says 0.48.1, unpublished)
