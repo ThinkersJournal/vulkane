@@ -2121,6 +2121,7 @@ dependencies = [
  "unpopped-vocab",
  "vulkane",
  "vulkane-hlsl-parse",
+ "vulkane-kernel-text",
  "vulkane-spirv-emit",
 ]
 

@@ -18,6 +18,7 @@ unpopped            = "~0.56.2"
 unpopped-vocab      = "~0.56.2"
 # FishStringer owns Slang (CireSnave 2026-11-06). `~` not `^`: this crate asserts the emitter's output shape.
 fishstringer-slang-emit = "~0.4.0"
+vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.25" }
 
 [dev-dependencies]
 # The round-trip test lifts emitted HLSL back to the IR with the HLSL frontend (needs unpopped's `convert`).
