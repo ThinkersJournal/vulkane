@@ -321,16 +321,7 @@ fn a_private_array_validates_and_is_private_storage() {
 #[test]
 fn a_constant_allocation_is_a_typed_decline() {
     // Read-only, so `check_kernel` admits it and the decline is this emitter's own.
-    let mut k = private_kernel::private_index(N, unpopped::exec::MemorySpace::Constant);
-    k.body.0.retain(|s| {
-        !matches!(
-            s,
-            Stmt::Store {
-                place: unpopped::kernel::Place::Alloc { .. },
-                ..
-            }
-        )
-    });
+    let k = private_kernel::read_only_constant(N);
     match lower(&k) {
         Err(LowerError::UnsupportedKernel { detail }) => {
             assert!(detail.contains("Constant space"), "{detail}");

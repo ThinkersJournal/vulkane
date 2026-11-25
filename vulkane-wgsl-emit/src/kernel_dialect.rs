@@ -13,7 +13,7 @@ use std::fmt::Write;
 
 use unpopped::exec::{ExecId, Scope};
 use unpopped::ir::BinaryOp;
-use unpopped::kernel::{BufferRole, MemoryOrder};
+use unpopped::kernel::{AtomicOp, BufferRole, MemoryOrder};
 use vulkane_kernel_text::{BIT_OPS, COMPARISONS, Dialect, Layout, operator};
 
 /// The WGSL dialect of [`vulkane_kernel_text::lower_kernel`].
@@ -30,11 +30,25 @@ fn axis(a: u8) -> Option<char> {
         .and_then(|s| s.chars().next())
 }
 
+/// The element type of a buffer or array: `atomic<T>` when the kernel applies an atomic to it.
+fn element(t: &str, atomic: bool) -> String {
+    if atomic {
+        format!("atomic<{t}>")
+    } else {
+        t.to_string()
+    }
+}
+
 impl WgslKernel {
     fn declarations(layout: &Layout) -> String {
         let t = ty(layout.signed);
         let mut s = String::new();
         for b in &layout.buffers {
+            if b.spec_local.is_some() {
+                let one = if layout.signed { "1" } else { "1u" };
+                let _ = writeln!(s, "@id({}) override {}: {t} = {one};", b.binding, b.name);
+                continue;
+            }
             let access = if b.role == BufferRole::Read {
                 "read"
             } else {
@@ -42,12 +56,21 @@ impl WgslKernel {
             };
             let _ = writeln!(
                 s,
-                "@group(0) @binding({}) var<storage, {access}> {}: array<{t}>;",
-                b.binding, b.name
+                "@group(0) @binding({}) var<storage, {access}> {}: array<{}>;",
+                b.binding,
+                b.name,
+                element(t, b.atomic)
             );
         }
         for a in &layout.shared {
-            let _ = writeln!(s, "var<workgroup> {}: array<{t}, {}>;", a.name, a.len);
+            let class = if a.private { "private" } else { "workgroup" };
+            let len = a.len_spec.clone().unwrap_or_else(|| a.len.to_string());
+            let _ = writeln!(
+                s,
+                "var<{class}> {}: array<{}, {len}>;",
+                a.name,
+                element(t, a.atomic)
+            );
         }
         s
     }
@@ -71,7 +94,10 @@ impl Dialect for WgslKernel {
             layout.name
         );
         for i in 0..layout.locals {
-            let _ = writeln!(s, "    var l{i}: {t} = {};", self.lit(0, layout.signed));
+            let init = layout
+                .spec_init(i)
+                .map_or_else(|| self.lit(0, layout.signed), str::to_string);
+            let _ = writeln!(s, "    var l{i}: {t} = {init};");
         }
         s
     }
@@ -139,6 +165,62 @@ impl Dialect for WgslKernel {
 
     fn barrier(&self, scope: Scope) -> Option<String> {
         (scope == Scope::Block).then(|| "storageBarrier(); workgroupBarrier();".to_string())
+    }
+
+    fn typed_atomics(&self) -> bool {
+        true
+    }
+
+    /// WGSL atomics act on workgroup and storage memory; a subgroup or cluster scope has no form.
+    fn atomic_scope_ok(&self, scope: Scope) -> bool {
+        matches!(scope, Scope::Block | Scope::Device)
+    }
+
+    fn atomic_load(&self, elem: &str) -> Option<String> {
+        Some(format!("atomicLoad(&{elem})"))
+    }
+
+    fn atomic_store(&self, elem: &str, value: &str) -> Option<String> {
+        Some(format!("atomicStore(&{elem}, {value});"))
+    }
+
+    fn atomic_rmw(&self, op: AtomicOp, elem: &str, value: &str) -> Option<String> {
+        let f = match op {
+            AtomicOp::Add => "atomicAdd",
+            AtomicOp::Min => "atomicMin",
+            AtomicOp::Max => "atomicMax",
+            AtomicOp::And => "atomicAnd",
+            AtomicOp::Or => "atomicOr",
+            AtomicOp::Xor => "atomicXor",
+            AtomicOp::Exchange => "atomicExchange",
+            _ => return None,
+        };
+        Some(format!("{f}(&{elem}, {value})"))
+    }
+
+    /// `atomicCompareExchangeWeak` may fail with the element equal to `expected` (spuriously), which
+    /// the IR's compare-exchange (the old value tells whether it swapped) cannot express; so the
+    /// exchange is retried until it either swaps or sees a different value.
+    fn atomic_cas_lines(
+        &self,
+        elem: &str,
+        expected: &str,
+        desired: &str,
+        dest: Option<&str>,
+    ) -> Option<Vec<String>> {
+        let mut lines = vec![
+            "{".to_string(),
+            format!("    let cas_e = {expected};"),
+            format!("    let cas_d = {desired};"),
+            "    loop {".to_string(),
+            format!("        let cas_r = atomicCompareExchangeWeak(&{elem}, cas_e, cas_d);"),
+            "        if (cas_r.exchanged || cas_r.old_value != cas_e) {".to_string(),
+        ];
+        if let Some(l) = dest {
+            lines.push(format!("            {l} = cas_r.old_value;"));
+        }
+        lines.extend(["            break;", "        }", "    }", "}"].map(String::from));
+        Some(lines)
     }
 
     fn fence(&self, _scope: Scope, _order: MemoryOrder) -> Option<String> {

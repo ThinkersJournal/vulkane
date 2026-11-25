@@ -7,22 +7,29 @@
 //! Without a device, `glslangValidator` or `spirv-val` the tests follow `VULKANE_REQUIRE_DEVICE`,
 //! `VULKANE_REQUIRE_GLSLANG` and `VULKANE_REQUIRE_SPIRV_VAL` rather than passing silently.
 
+#[path = "../../vulkane-spirv-emit/tests/support/atomic_kernel.rs"]
+mod atomic_kernel;
 #[path = "../../vulkane/tests/common/mod.rs"]
 #[allow(dead_code, unreachable_pub, missing_docs)]
 mod common;
 #[path = "../../vulkane-spirv-emit/tests/support/flow_kernel.rs"]
 mod flow_kernel;
+#[path = "support/glslang.rs"]
+mod glslang;
 #[path = "../../vulkane-spirv-emit/tests/support/gpu.rs"]
 mod gpu;
 #[path = "../../vulkane-spirv-emit/tests/support/grid_kernel.rs"]
 mod grid_kernel;
+#[path = "../../vulkane-spirv-emit/tests/support/private_kernel.rs"]
+mod private_kernel;
 #[path = "../../vulkane-spirv-emit/tests/support/reverse_kernel.rs"]
 mod reverse_kernel;
+#[path = "../../vulkane-spirv-emit/tests/support/subgroup_kernel.rs"]
+mod subgroup_kernel;
 
-use std::io::Write;
-use std::process::{Command, Stdio};
-
+use glslang::{glslang_words, validates};
 use unpopped::backend::{Backend, GeneratedKernel, LowerError};
+use unpopped::exec::MemorySpace;
 use unpopped::kernel::KernelFn;
 use vulkane_glsl_emit::Glsl;
 use vulkane_spirv_emit::WORKGROUP_SIZE;
@@ -38,70 +45,6 @@ fn reverse(with_barrier: bool) -> GeneratedKernel {
         with_barrier,
         false,
     ))
-}
-
-/// `glslangValidator` to SPIR-V words; `None` when it is absent (a failure under `VULKANE_REQUIRE_GLSLANG`).
-fn glslang_words(k: &GeneratedKernel) -> Option<Vec<u32>> {
-    let dir = tempfile::tempdir().unwrap();
-    let (src, spv) = (dir.path().join("k.comp"), dir.path().join("k.spv"));
-    std::fs::write(&src, &k.source).unwrap();
-    let out = Command::new("glslangValidator")
-        .args(["-V", "--target-env", "vulkan1.1", "-S", "comp", "-o"])
-        .arg(&spv)
-        .arg(&src)
-        .output();
-    let out = match out {
-        Ok(o) => o,
-        Err(e) => {
-            assert!(
-                std::env::var_os("VULKANE_REQUIRE_GLSLANG").is_none(),
-                "VULKANE_REQUIRE_GLSLANG is set but `glslangValidator` could not be run: {e}"
-            );
-            return None;
-        }
-    };
-    assert!(
-        out.status.success(),
-        "glslangValidator failed:\n{}{}\n--- source ---\n{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr),
-        k.source
-    );
-    let bytes = std::fs::read(&spv).unwrap();
-    Some(
-        bytes
-            .chunks_exact(4)
-            .map(|w| u32::from_le_bytes(w.try_into().unwrap()))
-            .collect(),
-    )
-}
-
-/// `spirv-val --target-env vulkan1.1` over `words`; `None` when it is absent and not required.
-fn validates(words: &[u32]) -> Option<(bool, String)> {
-    let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
-    let child = Command::new("spirv-val")
-        .args(["--target-env", "vulkan1.1", "-"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .and_then(|mut c| {
-            let _ = c.stdin.take().expect("piped stdin").write_all(&bytes);
-            c.wait_with_output()
-        });
-    match child {
-        Ok(o) => Some((
-            o.status.success(),
-            String::from_utf8_lossy(&o.stderr).into_owned(),
-        )),
-        Err(e) => {
-            assert!(
-                std::env::var_os("VULKANE_REQUIRE_SPIRV_VAL").is_none(),
-                "VULKANE_REQUIRE_SPIRV_VAL is set but `spirv-val` could not be run: {e}"
-            );
-            None
-        }
-    }
 }
 
 #[test]
@@ -216,6 +159,116 @@ fn declined(k: &KernelFn, needle: &str) {
     }
 }
 
+/// Row 8d: 1024 contended atomic updates through GLSL; the atomic kernel is exact and the plain
+/// load/add/store control loses updates on the same device (reported, not asserted).
+#[test]
+fn contended_atomics_are_exact_on_a_device() {
+    common::require_serialization_lock();
+    let Some(gpu) = gpu::Gpu::open("glsl_kernel_atomic") else {
+        return;
+    };
+    let run = |racy: bool| -> Option<Vec<u32>> {
+        let k = lower(&atomic_kernel::atomic_kernel(racy));
+        let words = glslang_words(&k)?;
+        Some(gpu.run_grid("main", &words, 4, [atomic_kernel::BLOCKS, 1, 1]))
+    };
+    let Some(got) = run(false) else {
+        return;
+    };
+    let (s, n) = (atomic_kernel::SENTINEL, atomic_kernel::THREADS);
+    assert_eq!(got[0], s.wrapping_add(n), "lost updates");
+    assert_eq!(got[1], 0, "unsigned minimum of the global ids");
+    assert!((1..=n).contains(&got[2]), "cas winner wrote {}", got[2]);
+    assert_eq!(
+        got[3],
+        s.wrapping_add(1),
+        "exactly one compare-exchange winner"
+    );
+    if let Some(racy) = run(true) {
+        eprintln!(
+            "glsl kernel_atomic control: a plain increment reached {} of {n}",
+            racy[0].wrapping_sub(s)
+        );
+    }
+}
+
+/// Row 8d decline: GLSL atomics carry no memory order, so a non-relaxed one is refused by name.
+#[test]
+fn a_non_relaxed_atomic_is_a_typed_decline() {
+    use unpopped::kernel::{MemoryOrder, Stmt};
+    let mut k = atomic_kernel::atomic_kernel(false);
+    if let Some(Stmt::AtomicRmw { order, .. }) = k.body.0.get_mut(1) {
+        *order = MemoryOrder::AcqRel;
+    } else {
+        panic!("the kernel's second statement is the atomic add");
+    }
+    declined(&k, "AcqRel atomic is not lowered");
+}
+
+/// The atomic spellings are in the source (the same query finds the plain-store control without them).
+#[test]
+fn the_atomic_kernel_spells_the_glsl_atomics_and_the_control_does_not() {
+    let a = lower(&atomic_kernel::atomic_kernel(false)).source;
+    let r = lower(&atomic_kernel::atomic_kernel(true)).source;
+    for f in ["atomicAdd", "atomicMin", "atomicCompSwap"] {
+        assert!(a.contains(f), "{a}");
+    }
+    assert_eq!(a.matches("atomicAdd").count(), 2, "{a}");
+    assert_eq!(r.matches("atomicAdd").count(), 1, "{r}");
+}
+
+/// Row 8a: the reversal with the shared array sized by a specialization constant (SpecId 2 is the
+/// scalar parameter's index), set to the block size when the pipeline is created.
+#[test]
+fn a_block_reversed_through_a_specialization_sized_array_is_exact_on_a_device() {
+    common::require_serialization_lock();
+    let Some(gpu) = gpu::Gpu::open("glsl_kernel_dynamic") else {
+        return;
+    };
+    let k = lower(&reverse_kernel::reverse(WORKGROUP_SIZE, true, true));
+    assert!(k.source.contains("layout(constant_id = 2)"), "{}", k.source);
+    let Some(words) = glslang_words(&k) else {
+        return;
+    };
+    let input: Vec<u32> = (0..WORKGROUP_SIZE).map(|i| i * 7 + 1).collect();
+    let want: Vec<u32> = input.iter().rev().copied().collect();
+    let spec = vulkane::safe::SpecializationConstants::new().add_u32(2, WORKGROUP_SIZE);
+    assert_eq!(
+        gpu.run_spec("main", &words, &[&input], Some(&spec)),
+        want,
+        "{}",
+        k.source
+    );
+}
+
+/// Row 8k: a per-thread `Private` array indexed by data, through GLSL; each thread reads its own value.
+#[test]
+fn a_private_array_with_data_dependent_indexing_is_per_thread_on_a_device() {
+    common::require_serialization_lock();
+    let Some(gpu) = gpu::Gpu::open("glsl_kernel_private") else {
+        return;
+    };
+    let n = WORKGROUP_SIZE;
+    let k = lower(&private_kernel::private_index(n, MemorySpace::Private));
+    let Some(words) = glslang_words(&k) else {
+        return;
+    };
+    let input: Vec<u32> = (0..n).map(|t| (t * 5 + 1) % 4).collect();
+    let want: Vec<u32> = (0..n).map(|t| t + 10 * input[t as usize]).collect();
+    assert_eq!(gpu.run("main", &words, &[&input]), want, "{}", k.source);
+    // Control: the indices differ between threads, so a wrong-index lowering could not pass.
+    assert!(input.iter().any(|&i| i != input[0]));
+}
+
+/// Row 8k decline: a `Constant` allocation has no initialiser in the IR.
+#[test]
+fn a_constant_allocation_is_a_typed_decline() {
+    declined(
+        &private_kernel::read_only_constant(WORKGROUP_SIZE),
+        "Constant space",
+    );
+}
+
 #[test]
 fn what_the_walker_does_not_lower_is_a_typed_decline_naming_it() {
     use unpopped::exec::{Extent, Scope};
@@ -224,9 +277,10 @@ fn what_the_walker_does_not_lower_is_a_typed_decline_naming_it() {
     f.compute = unpopped_vocab::ElementKind::F32;
     declined(&f, "integer kernels only");
 
+    // A dynamic extent from a local that no scalar parameter declares: `check_kernel` refuses it.
     let mut dynamic = reverse_kernel::reverse(WORKGROUP_SIZE, true, true);
-    dynamic.allocs[0].extent = Extent::Param(4);
-    declined(&dynamic, "not a flat buffer");
+    dynamic.allocs[0].extent = Extent::Param(1);
+    declined(&dynamic, "AllocExtent");
 
     let mut device = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
     device.body.0.insert(
@@ -241,4 +295,59 @@ fn what_the_walker_does_not_lower_is_a_typed_decline_naming_it() {
     let mut grid = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
     grid.body.0.push(Stmt::GridDepWait);
     declined(&grid, "GridDepWait");
+}
+
+/// Row 8c: `LaneId`, `SubgroupId` and `SubgroupSize` through GLSL (`gl_Subgroup*`); 128 threads, so
+/// two subgroups on a device of size 64. Each cell is checked against the device's reported size.
+#[test]
+fn lane_subgroup_and_size_ids_match_the_device_on_a_device() {
+    common::require_serialization_lock();
+    let Some(gpu) = gpu::Gpu::open("glsl_kernel_subgroup") else {
+        return;
+    };
+    let size = gpu.subgroup_size();
+    assert!((1..=128).contains(&size), "device subgroup size {size}");
+    let k = lower(&subgroup_kernel::subgroup_kernel(1, 128));
+    let Some(words) = glslang_words(&k) else {
+        return;
+    };
+    let got = gpu.run_grid("main", &words, subgroup_kernel::BLOCK as usize, [1, 1, 1]);
+    for (t, &g) in got.iter().enumerate() {
+        let want = subgroup_kernel::expected(t as u32, size);
+        assert_eq!(
+            g, want,
+            "thread {t} (subgroup size {size})
+{}",
+            k.source
+        );
+    }
+}
+
+/// The three spellings and the extension are in the source.
+#[test]
+fn the_subgroup_kernel_spells_the_builtins_and_the_extension() {
+    let src = lower(&subgroup_kernel::subgroup_kernel(1, 128)).source;
+    for w in [
+        "#extension GL_KHR_shader_subgroup_basic : enable",
+        "gl_SubgroupInvocationID",
+        "gl_SubgroupID",
+        "gl_SubgroupSize",
+    ] {
+        assert!(src.contains(w), "{src}");
+    }
+}
+
+/// A range no Vulkan device can have is refused by name (the control lowers).
+#[test]
+fn a_subgroup_range_no_device_can_have_is_a_typed_decline() {
+    for (min, max) in [(256, 512), (3, 3), (5, 7)] {
+        declined(
+            &subgroup_kernel::subgroup_kernel(min, max),
+            "holds no power of two up to 128",
+        );
+    }
+    assert!(
+        Glsl.lower_kernel(&subgroup_kernel::subgroup_kernel(4, 7))
+            .is_ok()
+    );
 }

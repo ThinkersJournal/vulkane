@@ -24,6 +24,15 @@
 //! has no memory order on them, so **every `MemoryOrder` collapses to the one full fence**: stronger
 //! than asked, never weaker. A device or cluster barrier is a typed decline.
 //!
+//! ## 64-bit integers
+//!
+//! An `I64`/`U64` kernel is spelled `int64_t`/`uint64_t` with `#extension GL_ARB_gpu_shader_int64 :
+//! require` (literals `5l`/`5ul`), shift counts masked at 63, and an execution id kept the `u32` the
+//! IR types it as and carried to the dtype by a wrapping `Cast` (`int64_t(x)`). A buffer index is
+//! narrowed to `int` (GLSL indexes with 32 bits). The device must have `shaderInt64`: the host's
+//! check, as for SPIR-V. 64-bit atomics, a specialization-constant extent and integer division are
+//! typed declines (the shared walker lowers no `Div`).
+//!
 //! The plan path (`Backend::lower`) is not implemented: this emitter lowers kernels only.
 
 mod dialect;
@@ -44,7 +53,9 @@ impl Backend for Glsl {
     }
     fn supports_dtype(&self, dtype: ElementKind, _target: TargetId) -> DtypeSupport {
         match dtype {
-            ElementKind::I32 | ElementKind::U32 => DtypeSupport::Supported,
+            ElementKind::I32 | ElementKind::U32 | ElementKind::I64 | ElementKind::U64 => {
+                DtypeSupport::Supported
+            }
             _ => DtypeSupport::Unsupported,
         }
     }
@@ -57,6 +68,8 @@ impl Backend for Glsl {
         })
     }
     fn lower_kernel(&self, kernel: &KernelFn) -> Result<GeneratedKernel, LowerError> {
-        vulkane_kernel_text::lower_kernel(self, kernel)
+        let wide = matches!(kernel.compute, ElementKind::I64 | ElementKind::U64);
+        let signed = matches!(kernel.compute, ElementKind::I64);
+        vulkane_kernel_text::lower_kernel(&dialect::Text { wide, signed }, kernel)
     }
 }
