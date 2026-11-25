@@ -7,7 +7,12 @@
 //! line naming it. Atomics at 64 bits are a typed decline.
 
 #[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
+#[allow(
+    dead_code,
+    unreachable_pub,
+    missing_docs,
+    reason = "shared test module: each test binary compiles it whole but uses part of it"
+)]
 mod common;
 #[path = "support/glslang.rs"]
 mod glslang;
@@ -16,7 +21,10 @@ mod gpu;
 #[path = "../../vulkane-spirv-emit/tests/support/reverse_kernel.rs"]
 mod reverse_kernel;
 #[path = "../../vulkane-spirv-emit/tests/support/wide_kernel.rs"]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared test module: each test binary compiles it whole but uses part of it"
+)]
 mod wide_kernel;
 
 use glslang::{glslang_words, validates};

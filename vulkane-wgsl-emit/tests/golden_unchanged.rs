@@ -4,16 +4,28 @@
 //! atomic typing change; `WGSL_GOLDEN_WRITE=1` rewrites them (only for a deliberate change).
 
 #[path = "../../vulkane-spirv-emit/tests/support/flow_kernel.rs"]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared test module: each test binary compiles it whole but uses part of it"
+)]
 mod flow_kernel;
 #[path = "../../vulkane-spirv-emit/tests/support/grid_kernel.rs"]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared test module: each test binary compiles it whole but uses part of it"
+)]
 mod grid_kernel;
 #[path = "../../vulkane-spirv-emit/tests/support/private_kernel.rs"]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared test module: each test binary compiles it whole but uses part of it"
+)]
 mod private_kernel;
 #[path = "../../vulkane-spirv-emit/tests/support/reverse_kernel.rs"]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared test module: each test binary compiles it whole but uses part of it"
+)]
 mod reverse_kernel;
 
 use unpopped::backend::Backend;

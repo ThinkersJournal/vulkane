@@ -53,7 +53,7 @@ pub(crate) fn subgroup_kernel(min: u32, max: u32) -> KernelFn {
     k
 }
 
-#[allow(dead_code)] // the WGSL test only needs the kernel
+#[allow(dead_code, reason = "the WGSL test only needs the kernel")]
 /// What thread `t` must store when the device runs subgroups of `size` lanes.
 pub(crate) fn expected(t: u32, size: u32) -> u32 {
     t % size + 256 * (t / size) + 65536 * size
