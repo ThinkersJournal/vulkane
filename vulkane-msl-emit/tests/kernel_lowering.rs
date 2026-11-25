@@ -12,8 +12,8 @@ use unpopped::kernel::{KernelFn, Stmt};
 use unpopped_vocab::ElementKind;
 use vulkane_msl_emit::Msl;
 use vulkane_test_support::{
-    atomic_kernel, float_kernel, flow_kernel, grid_kernel, private_kernel, reverse_kernel,
-    subgroup_kernel, wide_kernel,
+    atomic_kernel, float_kernel, flow_kernel, grid_kernel, narrow_kernel, private_kernel,
+    reverse_kernel, subgroup_kernel, wide_kernel,
 };
 
 const BLOCK: u32 = 64;
@@ -361,6 +361,62 @@ fn a_subgroup_barrier_is_simdgroup_barrier() {
         kind: unpopped::kernel::BarrierKind::Full,
     });
     assert!(text(&k).contains("simdgroup_barrier(mem_flags::mem_threadgroup"));
+}
+
+/// The Metal type name of each 8/16-bit element type.
+const NARROW: [(ElementKind, &str); 4] = [
+    (ElementKind::I8, "char"),
+    (ElementKind::U8, "uchar"),
+    (ElementKind::I16, "short"),
+    (ElementKind::U16, "ushort"),
+];
+
+#[test]
+fn narrow_buffers_are_spelled_char_uchar_short_ushort_and_widened_by_a_cast() {
+    for (elem, ty) in NARROW {
+        let mut k = narrow_kernel::widen_kernel(elem);
+        k.name = "narrow_case".to_string();
+        let src = text(&k);
+        assert!(
+            src.contains(&format!("device const {ty}* b0")),
+            "{elem:?}: {src}"
+        );
+        // The output is the 32-bit compute type; the widening is a cast, sign- or zero-extending.
+        let wide = if narrow_kernel::compute_of(elem) == ElementKind::I32 {
+            "int"
+        } else {
+            "uint"
+        };
+        assert!(src.contains(&format!("(({wide})(")), "{elem:?}: {src}");
+        assert!(
+            src.contains(&format!("device {wide}* b1")),
+            "{elem:?}: {src}"
+        );
+    }
+}
+
+#[test]
+fn a_narrowing_cast_wraps_through_the_narrow_type_and_a_narrow_local_is_typed() {
+    for (elem, ty) in NARROW {
+        let mut k = narrow_kernel::wrap_kernel(elem);
+        k.name = "narrow_case".to_string();
+        let src = text(&k);
+        assert!(src.contains(&format!("(({ty})(")), "{elem:?}: {src}");
+        assert!(src.contains(&format!("device {ty}* b1")), "{elem:?}: {src}");
+    }
+}
+
+#[test]
+fn an_atomic_beside_a_narrow_buffer_is_declined() {
+    let mut k = atomic_kernel::atomic_kernel(false);
+    k.params.push(unpopped::kernel::Param::buffer(
+        "narrow",
+        ElementKind::U8,
+        unpopped::kernel::BufferRole::Read,
+        Some(1),
+    ));
+    let d = decline(&k);
+    assert!(d.contains("8- or 16-bit"), "{d}");
 }
 
 #[test]
