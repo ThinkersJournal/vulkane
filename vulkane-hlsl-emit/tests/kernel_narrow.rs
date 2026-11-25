@@ -11,7 +11,12 @@
 //! and `VULKANE_REQUIRE_DEVICE`; a device without the features prints a `SKIP (unsupported)` line naming them.
 
 #[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
+#[allow(
+    dead_code,
+    unreachable_pub,
+    missing_docs,
+    reason = "shared test module: each test binary compiles it whole but uses part of it"
+)]
 mod common;
 #[path = "../../vulkane-spirv-emit/tests/support/gpu.rs"]
 mod gpu;
