@@ -6,7 +6,7 @@ use rspirv::spirv::{
     AddressingModel, BuiltIn, Capability, Decoration, MemoryModel, StorageClass, Word,
 };
 
-use crate::ops::Family;
+use crate::family::Family;
 
 /// Ids of the module-level declarations the function body refers to.
 pub(crate) struct Skeleton {

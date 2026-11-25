@@ -6,7 +6,7 @@ use unpopped::exec::{Extent, MemorySpace};
 use unpopped::kernel::{KernelFn, Param, ParamKind, check_kernel};
 
 use super::refuse;
-use crate::ops::Family;
+use crate::family::Family;
 
 /// Whether this slice can lower `kernel`: the dtype family, launch block and grid, or a decline.
 pub(super) fn check_scope(kernel: &KernelFn) -> Result<(Family, [u32; 3], [u32; 3]), LowerError> {
