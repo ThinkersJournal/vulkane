@@ -28,7 +28,6 @@ naga = { version = "30.0", features = ["wgsl-in", "spv-out"] }
 vulkane        = { path = "../vulkane" }
 unpopped-cpu-c = "~0.56.2"
 vulkane-spirv-emit = { path = "../vulkane-spirv-emit" }
-tempfile       = { workspace = true }
 
 [lints.rust]
 missing_docs                  = "deny"
