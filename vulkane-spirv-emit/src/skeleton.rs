@@ -56,6 +56,7 @@ pub(crate) fn element_type(b: &mut Builder, fam: Family, u32_t: Word) -> Word {
         Family::U8 => b.type_int(8, 0),
         Family::I16 => b.type_int(16, 1),
         Family::U16 => b.type_int(16, 0),
+        Family::F16 => b.type_float(16, None),
     }
 }
 

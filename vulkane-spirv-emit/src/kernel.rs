@@ -77,11 +77,37 @@ fn stmt_name(s: &Stmt) -> String {
         .collect()
 }
 
+/// Decorate every float add, subtract and multiply `NoContraction`, so a driver cannot fuse a
+/// multiply and an add into an FMA the oracle does not do (fuel#568).
+fn no_contraction(m: &mut rspirv::dr::Module) {
+    use rspirv::dr::{Instruction, Operand};
+    use rspirv::spirv::{Decoration, Op};
+    let ids: Vec<Word> = m
+        .functions
+        .iter()
+        .flat_map(|f| &f.blocks)
+        .flat_map(|b| &b.instructions)
+        .filter(|i| matches!(i.class.opcode, Op::FAdd | Op::FSub | Op::FMul))
+        .filter_map(|i| i.result_id)
+        .collect();
+    for id in ids {
+        m.annotations.push(Instruction::new(
+            Op::Decorate,
+            None,
+            None,
+            vec![
+                Operand::IdRef(id),
+                Operand::Decoration(Decoration::NoContraction),
+            ],
+        ));
+    }
+}
+
 /// A `u32` id value as the compute dtype: a bitcast at 32 bits. At 64 bits it stays the `u32` the IR
 /// types an execution id as; the kernel reaches its dtype through a `Cast`.
 fn widen(e: &mut Em, u32_t: Word, x: Word) -> Result<Word, LowerError> {
     let t = e.t;
-    if t == u32_t || e.fam.is_wide() {
+    if t == u32_t || e.fam.keeps_u32_ids() {
         Ok(x)
     } else {
         lo(e.b.bitcast(t, None, x))
@@ -163,8 +189,8 @@ impl Kc<'_> {
                     self.grid
                 };
                 let dim = v[usize::from(a)];
-                if self.em.borrow().fam.is_wide() {
-                    // An execution id is a `u32`; a wide kernel casts it to its dtype.
+                if self.em.borrow().fam.keeps_u32_ids() {
+                    // An execution id is a `u32`; a wide or float kernel keeps it so.
                     return Ok(Spelling::Spelled(self.u32_const(dim).to_string()));
                 }
                 let dtype = self.em.borrow().dtype;
@@ -420,6 +446,8 @@ fn begin_body<'k>(
         inputs: Vec::new(),
         index: zero_u32,
         temps: HashMap::new(),
+        strict: true,
+        rte: [false; 3],
     });
     let kc = Kc {
         kernel,
@@ -456,7 +484,22 @@ pub(crate) fn lower(kernel: &KernelFn) -> Result<GeneratedKernel, LowerError> {
     lo(e.b.end_function())?;
     e.b.entry_point(ExecutionModel::GLCompute, main, &kernel.name, interface);
     e.b.execution_mode(main, ExecutionMode::LocalSize, block);
-    let module = e.b.module();
+    let fam = e.fam;
+    if fam.is_float() {
+        // The oracle is IEEE: denormals honoured, NaN/Inf/signed zero propagated. Declared at every
+        // float width the kernel uses (its compute dtype, and an `F64` buffer or local in an `F32`
+        // kernel); a device that cannot honour them must refuse the pipeline (see
+        // `required_features`).
+        for width in check::float_widths(kernel, fam) {
+            e.b.execution_mode(main, ExecutionMode::DenormPreserve, [width]);
+            e.b.execution_mode(main, ExecutionMode::SignedZeroInfNanPreserve, [width]);
+        }
+        e.declare_rte(main);
+    }
+    let mut module = e.b.module();
+    if fam.is_float() {
+        no_contraction(&mut module);
+    }
     let source = module.disassemble();
     let words = module.assemble();
     Ok(GeneratedKernel::new(kernel.name.clone(), source).with_words(words))

@@ -66,31 +66,35 @@ pub(super) fn buffer_var(
 
 /// The 8- and 16-bit capabilities a kernel needs, declared only for the widths it uses: `Int8` /
 /// `Int16` for any such buffer element or local, and the storage-buffer access capability (with its
-/// extension) for a buffer element. A 32/64-bit kernel declares none of them.
-fn narrow_capabilities(b: &mut rspirv::dr::Builder, kernel: &KernelFn) {
+/// The 8- and 16-bit capabilities a kernel needs, declared only for the widths and kinds it uses:
+/// `Int8`/`Int16` for such a buffer element or local, `Float16` for a half one, and the storage-buffer
+/// access capability (with its extension) for a buffer element. A 32/64-bit kernel declares none.
+fn narrow_capabilities(b: &mut rspirv::dr::Builder, kernel: &KernelFn, fam: Family) {
     let buffers = kernel.params.iter().filter_map(|p| match &p.kind {
         ParamKind::Buffer { elem, .. } => Family::of(*elem),
         _ => None,
     });
-    let in_buffer = |w: u32| buffers.clone().any(|f| f.is_narrow() && f.bits() == w);
-    let anywhere = |w: u32| {
-        in_buffer(w)
-            || kernel
-                .locals
-                .iter()
-                .any(|l| Family::of(l.elem).is_some_and(|f| f.is_narrow() && f.bits() == w))
+    let locals = kernel.locals.iter().filter_map(|l| Family::of(l.elem));
+    let is = |f: Family, w: u32, half: bool| {
+        f.bits() == w && f.is_half() == half && (f.is_narrow() || half)
     };
-    if anywhere(8) {
+    let in_buffer = |w: u32, half: bool| buffers.clone().any(|f| is(f, w, half));
+    let anywhere =
+        |w: u32, half: bool| in_buffer(w, half) || locals.clone().any(|f| is(f, w, half));
+    if anywhere(8, false) {
         b.capability(Capability::Int8);
     }
-    if anywhere(16) {
+    if anywhere(16, false) {
         b.capability(Capability::Int16);
     }
-    if in_buffer(8) {
+    if anywhere(16, true) || fam.is_half() {
+        b.capability(Capability::Float16);
+    }
+    if in_buffer(8, false) {
         b.capability(Capability::StorageBuffer8BitAccess);
         b.extension("SPV_KHR_8bit_storage");
     }
-    if in_buffer(16) {
+    if in_buffer(16, false) || in_buffer(16, true) {
         b.capability(Capability::StorageBuffer16BitAccess);
         b.extension("SPV_KHR_16bit_storage");
     }
@@ -207,7 +211,14 @@ pub(super) fn declare_storage(
 /// Declare types, builtins, buffers and workgroup arrays for `kernel`.
 pub(super) fn declare(kernel: &KernelFn, fam: Family) -> Module {
     let mut b = header(fam);
-    narrow_capabilities(&mut b, kernel);
+    narrow_capabilities(&mut b, kernel, fam);
+    if fam.is_float() {
+        // IEEE NaN, infinity and signed-zero handling, as the oracle (C without -ffast-math) has it.
+        b.capability(Capability::SignedZeroInfNanPreserve);
+        if fam != Family::F64 && super::check::float_widths(kernel, fam).contains(&64) {
+            b.capability(Capability::Float64);
+        }
+    }
     let glsl = b.ext_inst_import("GLSL.std.450");
     let void = b.type_void();
     let fn_ty = b.type_function(void, []);

@@ -30,6 +30,73 @@
 //! must refuse the pipeline; whether a device does is a measurement (see `fishstringer-slang-emit`'s
 //! module docs), not something to read off feature bits.
 //!
+//! ## Float kernels (`F32`/`F64`): semantics and per-op accuracy
+//!
+//! `Backend::lower_kernel` lowers `F32`/`F64` kernels (the plan path is unchanged). The oracle is
+//! IEEE, as C without `-ffast-math` (the `Numerics` default: denormals honoured, no flush): the
+//! module declares `SignedZeroInfNanPreserve` and `DenormPreserve` at the kernel's width, so NaN,
+//! infinities, signed zeros and denormals are kept; every `OpFMul`/`OpFAdd`/`OpFSub` is
+//! `NoContraction` (no FMA the oracle does not do, fuel#568); nothing is `RelaxedPrecision`. The
+//! host must check [`required_features`]: `Float64` needs `shaderFloat64`, and the two modes need
+//! `shaderDenormPreserveFloat{32,64}` and `shaderSignedZeroInfNanPreserveFloat{32,64}`
+//! (`vulkane::safe::PhysicalDevice::float_controls_properties`); **the driver is not a guard**.
+//!
+//! A kernel op is lowered only when the Vulkan guarantee is no looser than the contract tier
+//! Unpopped rates it at (`contract.rs`); otherwise it is declined by name. Source: Vulkan
+//! specification, appendix *Vulkan Environment for SPIR-V*, section *Precision of Individual
+//! Operations*, Table "Precision of Core SPIR-V Instructions" and Table "Precision of GLSL.std.450
+//! Instructions". At 64 bits the spec says only "at least that of single precision".
+//!
+//! | op (IR) | SPIR-V | Vulkan bound (32-bit) | contract tier | kernel |
+//! |---|---|---|---|---|
+//! | `Add`, `Sub`, `Mul` | `OpFAdd`/`OpFSub`/`OpFMul` | correctly rounded | 0 ulp | lowered |
+//! | `Neg` | `OpFNegate` | correct result | 0 | lowered |
+//! | `Abs`, `Floor`, `Ceil`, `Trunc`, `Round` (half to even) | `FAbs`, `Floor`, `Ceil`, `Trunc`, `RoundEven` | correctly rounded / correct result | 0 | lowered |
+//! | `Sqr`, `Relu`, `Sign`, `Step`, `Max`, `Min`, `Cmp*` | `OpFMul`, compares, selects, `OpIsNan` | exact / correctly rounded | 0 | lowered |
+//! | `FmaxIeee`, `FminIeee` | `NMax`, `NMin` | correct result | 0 | lowered |
+//! | `Rsqrt` | `InverseSqrt` | 2 ULP | 2 | lowered at `F32` only |
+//! | `Div`, `Recip` | `OpFDiv` | **2.5 ULP** for \|y\| in [2^-126, 2^126]; the oracle divides correctly rounded | 0 | **declined** |
+//! | `Sqrt` | `Sqrt` | "Inherited from 1.0 / inversesqrt()", not correctly rounded | 0 | **declined** |
+//! | `Exp`, `Exp2` | `Exp`, `Exp2` | 3 + 2 x \|x\| ULP | 2 | **declined** (3 > 2) |
+//! | `Log`, `Log2` | `Log`, `Log2` | 3 ULP outside [0.5, 2.0]; absolute error < 2^-21 inside | 1 | **declined** |
+//! | `Sin`, `Cos` | `Sin`, `Cos` | absolute error <= 2^-11 inside [-pi, pi], no ULP bound | 2 | **declined** |
+//! | `Atan` | `Atan` | 4096 ULP | 2 | **declined** |
+//! | `Tan`, `Asin`, `Acos`, `Sinh`, `Cosh`, `Tanh` | `Tan`, `Asin`, `Acos`, `Sinh`, `Cosh`, `Tanh` | "inherited from" a formula over `sin`/`cos`/`atan2`/`exp`/`sqrt` | 2 to 4 | **declined** |
+//! | `Sigmoid`, `Silu`, `Expm1`, `Log1p`, `Log10` | composites of `Exp`/`Log`/`OpFDiv` | inherit the above | 1 to 3 | **declined** |
+//! | `Rem`, `RemTrunc` | `OpFRem` or floor-composite | "Inherited from x - y x trunc(x/y)" (uses `OpFDiv`); the spec notes the error "can be large" | 0 | **declined** |
+//! | `Pow`, `Atan2` | `Pow`, `Atan2` | "inherited from exp2(y x log2(x))"; 4096 ULP | n/a | **declined** |
+//!
+//! `OpFDiv`'s 2.5 ULP is looser than the correctly rounded division the oracle does, so a float
+//! `Div` is declined at both widths rather than lowered under a tier the device does not promise.
+//! **Source of the bounds:** the AsciiDoc source `appendices/spirvenv.adoc` of
+//! `KhronosGroup/Vulkan-Docs` (branch `main`, 245,214 bytes), read whole on 2026-11-23 at 10:33 UTC
+//! with a read-only `gh api repos/KhronosGroup/Vulkan-Docs/contents/appendices/spirvenv.adoc`;
+//! the tables are "Precision of Core SPIR-V Instructions" and "Precision of GLSL.std.450
+//! Instructions". The `sqrt()` cell reads "Inherited from 1.0 / inversesqrt()" and the `OpFDiv` cell
+//! "2.5 ULP for |y| = 0 or |y| in the range [2^-126, 2^126]", so both stay declined; no
+//! transcendental's bound is within its contract tier, so none is lowered. A kernel needing them
+//! must wait for an op with a bound inside the tier (a polyfill, or a device that promises more).
+//!
+//! ### What the oracle assumes, and which control that justifies
+//!
+//! Read at `origin/main` 08f6780d of the Unpopped repository:
+//! - **Denormals are honoured.** `Numerics::default()` is `ftz: false`, `round: NearestEven`
+//!   (`crates/unpopped/src/ir.rs`, `impl Default for Numerics`); flushing is an opt-in qualifier
+//!   (`ftz_f32`, `numerics.rs`). So a kernel must not flush: `DenormPreserve`.
+//! - **NaN payloads and the sign of zero are kept where the IR moves bits.** `Select` arms and
+//!   `Max`/`Min` winners move verbatim, "so -0.0 / NaN payloads / signaling survive"
+//!   (`oracle/expr_eval.rs`, the `Select` arm and the bit-preserving `Max`/`Min` comment, NaN-first
+//!   ordering). That needs infinities, NaNs and signed zeros preserved through those ops:
+//!   `SignedZeroInfNanPreserve`.
+//! - **Arithmetic is compared tolerantly:** `Fidelity::Tolerant` is "both-NaN payload-agnostic equal;
+//!   +-0 equal" (`oracle/fidelity.rs`), so arithmetic results are not required to carry a NaN
+//!   payload or a zero's sign; the device tests here are stricter (bit-exact except that every NaN
+//!   equals every NaN).
+//!
+//! `NoContraction` is evidenced by an **instruction-count unit test only** (every `OpFMul`/
+//! `OpFAdd`/`OpFSub` is decorated): the harness GPU did not fuse the multiply-add, so no device
+//! test distinguishes the decorated module from an undecorated one.
+//!
 //! ## 64-bit integers (kernels only): a host contract
 //!
 //! `Backend::lower_kernel` lowers `I64`/`U64` kernels (capability `Int64`, plus `Int64Atomics` for a
@@ -57,8 +124,10 @@
 //!   `Acosh`, `Atanh`, `Copysign`, `Nextafter`, `Fma`, `Cast`, `Bitcast`, so the emitters can be
 //!   checked against each other on the same ops.
 
+mod accuracy;
 mod cast;
 mod features;
+mod half;
 mod kernel;
 mod ops;
 mod patent_decline;
@@ -98,7 +167,7 @@ pub const WORKGROUP_SIZE: u32 = 256;
 /// enables (named in the module docs), so there is no target field to read.
 fn dtype_ok(dt: ElementKind, _target: TargetId) -> DtypeSupport {
     // 8/16/64-bit integers are kernel-only (`lower_kernel`): a plan still declines them.
-    if Family::of(dt).is_some_and(|f| !f.is_wide() && !f.is_narrow()) {
+    if Family::of(dt).is_some_and(|f| !f.is_wide() && !f.is_narrow() && !f.is_half()) {
         DtypeSupport::Supported
     } else {
         DtypeSupport::Unsupported
@@ -261,7 +330,7 @@ pub(crate) fn lower_body(
     let cast = |x: String, from: ElementKind, spec: unpopped::ir::CastSpec| {
         let mut e = em.borrow_mut();
         let x = e.resolve(&x);
-        e.int_cast(x, from, spec)
+        e.cast(x, from, spec)
     };
     // Spelling a hoisted temporary needs no type name here (the `temp` seam emits no text).
     let type_name = |_t: ElementKind| Some(String::new());
@@ -300,6 +369,8 @@ fn emit_scalar(plan: &KernelPlan<'_>) -> Result<GeneratedKernel, LowerError> {
         inputs: sk.inputs,
         index,
         temps: HashMap::new(),
+        strict: false,
+        rte: [false; 3],
     });
     let root = lower_body(&em, plan.body, None)?;
     let mut e = em.into_inner();
@@ -325,6 +396,12 @@ fn declare_entry(b: &mut Builder, fam: Family, main: Word, gid: Word, name: &str
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod kernel_cast_tests;
+#[cfg(test)]
+mod kernel_float_tests;
+#[cfg(test)]
+mod kernel_half_tests;
 #[cfg(test)]
 mod kernel_narrow_tests;
 #[cfg(test)]
