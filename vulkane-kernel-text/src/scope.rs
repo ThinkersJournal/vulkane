@@ -66,8 +66,11 @@ fn dtype(d: &dyn Dialect, kernel: &KernelFn) -> Result<(bool, bool), LowerError>
         ElementKind::U32 => Ok((false, false)),
         ElementKind::I64 if d.wide() => Ok((true, false)),
         ElementKind::U64 if d.wide() => Ok((false, false)),
-        ElementKind::F32 if d.float() && !d.double() && !d.half() => Ok((false, true)),
+        ElementKind::F32 if d.float() && !d.double() && !d.half() && !d.bfloat() => {
+            Ok((false, true))
+        }
         ElementKind::F16 if d.float() && d.half() => Ok((false, true)),
+        ElementKind::Bf16 if d.float() && d.bfloat() => Ok((false, true)),
         ElementKind::F64 if d.float() && d.double() => Ok((false, true)),
         other => Err(refuse(
             d.name(),
