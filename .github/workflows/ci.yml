@@ -798,7 +798,7 @@ jobs:
           VULKANE_REQUIRE_GLSLANG: "1"
           VULKANE_REQUIRE_SPIRV_VAL: "1"
         run: |
-          cargo test -p vulkane-kernel-text -p vulkane-glsl-emit -p vulkane-wgsl-emit --locked -- --nocapture
+          cargo test -p vulkane-kernel-text -p vulkane-glsl-emit -p vulkane-wgsl-emit -p vulkane-msl-emit --locked -- --nocapture
           cargo test -p vulkane-spirv-emit --locked --test kernel_barrier_live --test kernel_flow_live -- --nocapture
 
   format:
