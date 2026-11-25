@@ -7,7 +7,7 @@
 //! README says so). Each assertion names the spelling it pins.
 
 use unpopped::backend::{Backend, GeneratedKernel, LowerError};
-use unpopped::exec::{MemorySpace, Scope};
+use unpopped::exec::{ExecId, MemorySpace, Scope};
 use unpopped::kernel::{KernelFn, Stmt};
 use unpopped_vocab::ElementKind;
 use vulkane_msl_emit::Msl;
@@ -167,8 +167,8 @@ fn what_is_not_spelled_is_declined_by_name() {
     assert!(sqrt.contains("msl"), "{sqrt}");
     let wide = decline(&wide_kernel::wide_kernel(ElementKind::I64));
     assert!(wide.contains("msl"), "{wide}");
-    let subgroup = decline(&subgroup_kernel::subgroup_kernel(1, 128));
-    assert!(subgroup.contains("LaneId"), "{subgroup}");
+    let cluster = decline(&exec_kernel(ExecId::DeviceRank));
+    assert!(cluster.contains("DeviceRank"), "{cluster}");
     let scalar = decline(&reverse_kernel::reverse(
         BLOCK,
         true,
@@ -299,6 +299,68 @@ fn bf16_and_the_inexact_half_ops_are_declined_by_name() {
         float_kernel::Case::Sqrt,
     ));
     assert!(sqrt.contains("msl"), "{sqrt}");
+}
+
+/// The reverse kernel with its first stored value replaced by a read of `id`.
+fn exec_kernel(id: ExecId) -> KernelFn {
+    use unpopped::ir::ScalarExpr as E;
+    let mut k = reverse(false);
+    let mut done = false;
+    for st in &mut k.body.0 {
+        if let Stmt::Store { value, .. } = st {
+            if !done {
+                *value = E::Exec(id);
+                done = true;
+            }
+        }
+    }
+    assert!(done, "the reverse kernel has a Store");
+    k
+}
+
+#[test]
+fn subgroup_ids_are_declared_in_the_signature_only_when_read() {
+    let src = text(&subgroup_kernel::subgroup_kernel(1, 128));
+    assert!(
+        src.contains("uint lane [[thread_index_in_simdgroup]]"),
+        "{src}"
+    );
+    assert!(
+        src.contains("uint sgid [[simdgroup_index_in_threadgroup]]"),
+        "{src}"
+    );
+    assert!(
+        src.contains("uint sgsize [[threads_per_simdgroup]]"),
+        "{src}"
+    );
+    // The required range is not dropped silently.
+    assert!(src.contains("requires a subgroup size in 1..=128"), "{src}");
+    // A kernel that reads none declares none.
+    let plain = text(&reverse(true));
+    assert!(
+        !plain.contains("simdgroup") && !plain.contains("threads_per"),
+        "{plain}"
+    );
+}
+
+#[test]
+fn block_and_grid_dims_are_launch_constants_folded_by_the_walker() {
+    // `reverse` launches 64 x 1 x 1 threads in one block: BlockDim(0) is 64, BlockDim(1) is 1.
+    let b = text(&exec_kernel(ExecId::BlockDim(0)));
+    assert!(b.contains("a0[l0] = 64u;"), "{b}");
+    let g = text(&exec_kernel(ExecId::GridDim(2)));
+    assert!(g.contains("a0[l0] = 1u;"), "{g}");
+    assert!(!b.contains("threads_per_threadgroup") && !g.contains("threadgroups_per_grid"));
+}
+
+#[test]
+fn a_subgroup_barrier_is_simdgroup_barrier() {
+    let mut k = reverse(true);
+    k.body.0.push(Stmt::Barrier {
+        scope: Scope::Subgroup,
+        kind: unpopped::kernel::BarrierKind::Full,
+    });
+    assert!(text(&k).contains("simdgroup_barrier(mem_flags::mem_threadgroup"));
 }
 
 #[test]

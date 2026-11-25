@@ -21,13 +21,15 @@ use unpopped::kernel::{BufferRole, MemoryOrder};
 use unpopped_vocab::ElementKind;
 use vulkane_kernel_text::{BIT_OPS, COMPARISONS, Dialect, Layout, operator};
 
-use crate::dialect::{axis, barrier, fence};
+use crate::dialect::{Ids, barrier, fence};
 
 /// The MSL dialect of an `F32` or `F16` kernel; the integer one is [`crate::Msl`].
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct MslFloat {
     /// `true` for an `F16` kernel (`half`), `false` for `F32`.
     pub(crate) half: bool,
+    /// The built-in ids the body read.
+    pub(crate) ids: Ids,
 }
 
 fn elem(t: ElementKind) -> Option<(&'static str, &'static str)> {
@@ -171,7 +173,9 @@ impl Dialect for MslFloat {
             );
         }
         s.push_str("    uint3 tid [[thread_position_in_threadgroup]],\n");
-        s.push_str("    uint3 gid [[threadgroup_position_in_grid]])\n{\n");
+        s.push_str("    uint3 gid [[threadgroup_position_in_grid]]");
+        s.push_str(&self.ids.params());
+        s.push_str(")\n{\n");
         for a in &layout.shared {
             let class = if a.private { "" } else { "threadgroup " };
             let t = elem(a.elem).map_or("float", |(n, _)| n);
@@ -202,13 +206,8 @@ impl Dialect for MslFloat {
     }
 
     fn exec(&self, id: ExecId, _signed: bool) -> Option<String> {
-        let (var, a) = match id {
-            ExecId::ThreadIdx(a) => ("tid", a),
-            ExecId::BlockIdx(a) => ("gid", a),
-            _ => return None,
-        };
         // An execution id stays the `u32` the IR types it as.
-        Some(format!("{var}.{}", axis(a)?))
+        self.ids.exec(id, false)
     }
 
     fn binary(&self, op: BinaryOp, a: &str, b: &str, signed: bool) -> Option<String> {

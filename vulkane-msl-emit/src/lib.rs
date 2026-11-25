@@ -39,12 +39,17 @@
 //! seen still equals `expected`. Scope Block and Device only; a non-`Relaxed` order is a decline (Metal 4.1 adds
 //! acquire/release, not spelled yet). Text pinned, **not compiled**.
 //!
+//! Subgroup ids: `LaneId`, `SubgroupId` and `SubgroupSize` are `thread_index_in_simdgroup`, `simdgroup_index_in_threadgroup` and
+//! `threads_per_simdgroup`, declared in the signature only when the body reads them; a subgroup `Barrier` is
+//! `simdgroup_barrier`. `BlockDim` and `GridDim` are launch constants the walker folds. A launch's required subgroup size
+//! range cannot be requested in Metal, so the source carries it as a `// requires a subgroup size in a..=b` comment.
+//!
 //! ## Declined by name
 //!
 //! A kernel named with an MSL keyword or type name (`float`, `kernel`, `tid`, ...: `kernel void float(` cannot compile),
 //! `Bf16` (Metal 3.1 has `bfloat`, not spelled yet), `F64` (Metal has no `double`), `Div`, `Sqrt` and the transcendentals (looser bound than the contract tier), other
-//! 64-bit, 8/16-bit integer and vector kernels, float atomics, a subgroup-scope atomic, scalar parameters, subgroup and
-//! `BlockDim`/`GridDim` ids, and a `Barrier` or `Fence` at a scope other than block (and device for a
+//! 64-bit, 8/16-bit integer and vector kernels, float atomics, a subgroup-scope atomic, scalar parameters, the device ids
+//! (`DeviceRank`, `DeviceCount`), and a `Barrier` or `Fence` at a scope other than block or subgroup (a barrier) / block or device (a
 //! fence): each a typed `UnsupportedKernel` from the shared walker naming it. The twelve NVIDIA-only
 //! statements of board 434 C are refused by name first. The plan path (`Backend::lower`) is not
 //! implemented.
@@ -122,6 +127,9 @@ const RESERVED: &[&str] = &[
     "typename",
     "tid",
     "gid",
+    "lane",
+    "sgid",
+    "sgsize",
 ];
 
 impl Backend for Msl {
@@ -168,12 +176,34 @@ impl Backend for Msl {
                 ),
             });
         }
-        if matches!(kernel.compute, ElementKind::F32 | ElementKind::F16) {
+        let generated = if matches!(kernel.compute, ElementKind::F32 | ElementKind::F16) {
             let d = float::MslFloat {
                 half: kernel.compute == ElementKind::F16,
+                ..Default::default()
             };
-            return vulkane_kernel_text::lower_kernel(&d, kernel);
-        }
-        vulkane_kernel_text::lower_kernel(&Msl, kernel)
+            vulkane_kernel_text::lower_kernel(&d, kernel)?
+        } else {
+            vulkane_kernel_text::lower_kernel(&dialect::IntKernel::default(), kernel)?
+        };
+        Ok(with_subgroup_note(kernel, generated))
     }
+}
+
+/// A launch's required subgroup size range cannot be requested in Metal (the device's `threads_per_simdgroup` is what a
+/// kernel reads), so the source says what the kernel asked for, beside the `threadsPerThreadgroup` line, rather than
+/// dropping it silently.
+fn with_subgroup_note(kernel: &KernelFn, g: GeneratedKernel) -> GeneratedKernel {
+    let Some(r) = kernel.launch.and_then(|l| l.subgroup) else {
+        return g;
+    };
+    let note = format!(
+        "// requires a subgroup size in {}..={}; Metal cannot request one (threads_per_simdgroup is the device's): check it at dispatch\n",
+        r.min, r.max
+    );
+    let source = g.source.replacen(
+        "// threadsPerThreadgroup:",
+        &format!("{note}// threadsPerThreadgroup:"),
+        1,
+    );
+    GeneratedKernel::new(g.name, source)
 }
