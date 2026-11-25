@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copied from `unpopped-cpu-c` 0.43.2 `tests/support/cc.rs` (same author, MIT OR Apache-2.0; test-only, not
-// packaged: Cargo.toml `include` omits `tests/`). Changes: this note, the `allow` below, and `compile`
+// packaged: Cargo.toml `include` omits `tests/`). Changes: this note and `compile`
 // split into `compile_vcvars` / `compile_direct` (same commands, for the complexity gate).
 //! Host C compiler discovery and driving, shared by the compile-and-run tests
 //! (moved verbatim from `cpu_end_to_end.rs` so the kernel-layer differential can use it).
-#![allow(dead_code)]
-
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
