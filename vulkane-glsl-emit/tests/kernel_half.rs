@@ -8,13 +8,24 @@
 //! 16-bit float controls a `SKIP (unsupported)` line names the capability.
 
 #[path = "../../vulkane-spirv-emit/tests/support/cast_kernel.rs"]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared test module: each test binary compiles it whole but uses part of it"
+)]
 mod cast_kernel;
 #[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
+#[allow(
+    dead_code,
+    unreachable_pub,
+    missing_docs,
+    reason = "shared test module: each test binary compiles it whole but uses part of it"
+)]
 mod common;
 #[path = "../../vulkane-spirv-emit/tests/support/float_kernel.rs"]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared test module: each test binary compiles it whole but uses part of it"
+)]
 mod float_kernel;
 #[path = "support/glslang.rs"]
 mod glslang;
