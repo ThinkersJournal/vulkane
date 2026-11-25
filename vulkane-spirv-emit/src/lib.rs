@@ -30,6 +30,18 @@
 //! must refuse the pipeline; whether a device does is a measurement (see `fishstringer-slang-emit`'s
 //! module docs), not something to read off feature bits.
 //!
+//! ## 64-bit integers (kernels only): a host contract
+//!
+//! `Backend::lower_kernel` lowers `I64`/`U64` kernels (capability `Int64`, plus `Int64Atomics` for a
+//! 64-bit atomic); the plan path (`Backend::lower`) still declines them. **A module using `Int64`
+//! requires the host to have enabled `shaderInt64` when it created the device**
+//! (`vulkane::safe::DeviceFeatures::new().with_shader_int64()` in `DeviceCreateInfo::enabled_features`;
+//! 64-bit atomics also need `with_shader_buffer_int64_atomics()` or `with_shader_shared_int64_atomics()`
+//! for the memory they touch). The emitter cannot see the device and the driver is no guard: a
+//! device created without the feature ran an `Int64` module without error on this lane's harness GPU.
+//! [`required_features`] reads a generated module's capabilities so the host can check first.
+//! A kernel's `Cast` is **wrapping only** (integer to the compute dtype); it is no saturating cast.
+//!
 //! ## v1 scope (honest boundary)
 //!
 //! - Dtypes: `F32`/`F32Strict`, `F64` (`Float64`), `I32`, `U32`. Everything else is declined through
@@ -45,6 +57,8 @@
 //!   `Acosh`, `Atanh`, `Copysign`, `Nextafter`, `Fma`, `Cast`, `Bitcast`, so the emitters can be
 //!   checked against each other on the same ops.
 
+mod cast;
+mod features;
 mod kernel;
 mod ops;
 mod patent_decline;
@@ -67,6 +81,7 @@ use unpopped::plan::{KernelPlan, Schedule};
 use unpopped::types::Ty;
 use unpopped_vocab::{ElementKind, TargetId};
 
+pub use features::{RequiredFeatures, required_features};
 use ops::{Em, Family, lo};
 use skeleton::declare;
 
@@ -82,7 +97,8 @@ pub const WORKGROUP_SIZE: u32 = 256;
 /// Vulkan 1.1's mandatory shader model except `F64`, whose `shaderFloat64` feature the consumer
 /// enables (named in the module docs), so there is no target field to read.
 fn dtype_ok(dt: ElementKind, _target: TargetId) -> DtypeSupport {
-    if Family::of(dt).is_some() {
+    // 8/16/64-bit integers are kernel-only (`lower_kernel`): a plan still declines them.
+    if Family::of(dt).is_some_and(|f| !f.is_wide() && !f.is_narrow()) {
         DtypeSupport::Supported
     } else {
         DtypeSupport::Unsupported
@@ -242,8 +258,15 @@ pub(crate) fn lower_body(
         .constant(&constant)
         .const_int(&const_int)
         .temp(&temp);
+    let cast = |x: String, from: ElementKind, spec: unpopped::ir::CastSpec| {
+        let mut e = em.borrow_mut();
+        let x = e.resolve(&x);
+        e.int_cast(x, from, spec)
+    };
+    // Spelling a hoisted temporary needs no type name here (the `temp` seam emits no text).
+    let type_name = |_t: ElementKind| Some(String::new());
     let lowering = match kernel {
-        Some(k) => with_kernel_seams(lowering, k),
+        Some(k) => with_kernel_seams(lowering.cast(&cast).type_name(&type_name), k),
         None => lowering,
     };
     let (prelude, root) = lower_dag(&ExprDag::from_expr(body), "spirv", &lowering.build())?;
@@ -303,4 +326,8 @@ fn declare_entry(b: &mut Builder, fam: Family, main: Word, gid: Word, name: &str
 mod tests;
 
 #[cfg(test)]
+mod kernel_narrow_tests;
+#[cfg(test)]
 mod kernel_tests;
+#[cfg(test)]
+mod kernel_wide_tests;

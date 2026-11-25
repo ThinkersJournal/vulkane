@@ -1,0 +1,80 @@
+; SPIR-V
+; Version: 1.3
+; Generator: rspirv
+; Bound: 52
+OpCapability Shader
+%1 = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %20 "reverse" %8 %9
+OpExecutionMode %20 LocalSize 256 1 1
+OpDecorate %8 BuiltIn LocalInvocationId
+OpDecorate %9 BuiltIn WorkgroupId
+OpDecorate %10 ArrayStride 4
+OpDecorate %11 Block
+OpMemberDecorate %11 0 Offset 0
+OpDecorate %13 DescriptorSet 0
+OpDecorate %13 Binding 0
+OpDecorate %13 NonWritable
+OpDecorate %14 DescriptorSet 0
+OpDecorate %14 Binding 1
+OpDecorate %15 SpecId 2
+%2 = OpTypeVoid
+%3 = OpTypeFunction %2
+%4 = OpTypeBool
+%5 = OpTypeInt 32 0
+%6 = OpTypeVector %5 3
+%7 = OpTypePointer Input %6
+%8 = OpVariable  %7  Input
+%9 = OpVariable  %7  Input
+%10 = OpTypeRuntimeArray %5
+%11 = OpTypeStruct %10
+%12 = OpTypePointer StorageBuffer %11
+%13 = OpVariable  %12  StorageBuffer
+%14 = OpVariable  %12  StorageBuffer
+%15 = OpSpecConstant  %5  1
+%16 = OpTypeArray %5 %15
+%17 = OpTypePointer Workgroup %16
+%18 = OpVariable  %17  Workgroup
+%19 = OpConstant  %5  0
+%22 = OpTypePointer Function %5
+%31 = OpConstant  %5  0
+%32 = OpTypePointer StorageBuffer %5
+%36 = OpTypePointer Workgroup %5
+%39 = OpConstant  %5  2
+%40 = OpConstant  %5  2
+%41 = OpConstant  %5  328
+%42 = OpConstant  %5  255
+%49 = OpConstant  %5  0
+%20 = OpFunction  %2  None %3
+%21 = OpLabel
+%23 = OpVariable  %22  Function
+%24 = OpVariable  %22  Function
+%25 = OpVariable  %22  Function
+%26 = OpVariable  %22  Function
+%27 = OpVariable  %22  Function
+OpStore %27 %15
+%28 = OpLoad  %6  %8
+%29 = OpCompositeExtract  %5  %28 0
+OpStore %23 %29
+%30 = OpLoad  %5  %23
+%33 = OpAccessChain  %32  %13 %31 %30
+%34 = OpLoad  %5  %33
+OpStore %24 %34
+%35 = OpLoad  %5  %23
+%37 = OpAccessChain  %36  %18 %35
+%38 = OpLoad  %5  %24
+OpStore %37 %38
+OpControlBarrier %39 %40 %41
+%43 = OpLoad  %5  %23
+%44 = OpISub  %5  %42 %43
+OpStore %25 %44
+%45 = OpLoad  %5  %25
+%46 = OpAccessChain  %36  %18 %45
+%47 = OpLoad  %5  %46
+OpStore %26 %47
+%48 = OpLoad  %5  %23
+%50 = OpAccessChain  %32  %14 %49 %48
+%51 = OpLoad  %5  %26
+OpStore %50 %51
+OpReturn
+OpFunctionEnd

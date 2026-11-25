@@ -102,6 +102,15 @@ pub(crate) enum Family {
     F64,
     I32,
     U32,
+    /// 64-bit integers: kernels only (`Backend::lower_kernel`); a plan never lowers them.
+    I64,
+    U64,
+    /// 8- and 16-bit integers: storage and local types of a kernel (a `Cast` widens them to, and
+    /// narrows them from, the 32-bit compute dtype); never a compute dtype and never a plan dtype.
+    I8,
+    U8,
+    I16,
+    U16,
 }
 
 impl Family {
@@ -111,6 +120,12 @@ impl Family {
             ElementKind::F64 => Some(Family::F64),
             ElementKind::I32 => Some(Family::I32),
             ElementKind::U32 => Some(Family::U32),
+            ElementKind::I64 => Some(Family::I64),
+            ElementKind::U64 => Some(Family::U64),
+            ElementKind::I8 => Some(Family::I8),
+            ElementKind::U8 => Some(Family::U8),
+            ElementKind::I16 => Some(Family::I16),
+            ElementKind::U16 => Some(Family::U16),
             _ => None,
         }
     }
@@ -118,7 +133,28 @@ impl Family {
         matches!(self, Family::F32 | Family::F64)
     }
     pub(crate) fn bytes(self) -> u32 {
-        if self == Family::F64 { 8 } else { 4 }
+        self.bits() / 8
+    }
+    /// The width of the compute dtype in bits.
+    pub(crate) fn bits(self) -> u32 {
+        match self {
+            Family::F64 | Family::I64 | Family::U64 => 64,
+            Family::I8 | Family::U8 => 8,
+            Family::I16 | Family::U16 => 16,
+            _ => 32,
+        }
+    }
+    /// An 8- or 16-bit integer, which needs `Int8`/`Int16` (and a storage capability in a buffer).
+    pub(crate) fn is_narrow(self) -> bool {
+        matches!(self, Family::I8 | Family::U8 | Family::I16 | Family::U16)
+    }
+    /// A 64-bit integer, which needs the `Int64` capability.
+    pub(crate) fn is_wide(self) -> bool {
+        matches!(self, Family::I64 | Family::U64)
+    }
+    /// A signed integer family.
+    pub(crate) fn is_signed(self) -> bool {
+        matches!(self, Family::I32 | Family::I64 | Family::I8 | Family::I16)
     }
 }
 
@@ -419,10 +455,10 @@ impl Em {
     }
 
     /// The shift count as Unpopped defines it (`docs/int-div-shift-semantics.md`, rule 3): its
-    /// bits read as unsigned, modulo the 32-bit width, i.e. `count & 31`. SPIR-V makes a count
-    /// `>= 32` poison (3.3.14), so the mask is not optional; it also defines a negative count.
+    /// bits read as unsigned, modulo the width `N`, i.e. `count & (N - 1)`. SPIR-V makes a count
+    /// `>= N` poison (3.3.14), so the mask is not optional; it also defines a negative count.
     fn shift_count(&mut self, count: Word) -> Result<Word, LowerError> {
-        let mask = self.b.constant_bit32(self.t, 31);
+        let mask = self.iconst(i64::from(self.fam.bits() - 1));
         lo(self.b.bitwise_and(self.t, None, count, mask))
     }
 
@@ -435,7 +471,7 @@ impl Em {
     /// `>>` follows the signedness of the dtype: arithmetic on `i32`, logical on `u32`.
     fn shift_right(&mut self, a: Word, b: Word) -> Result<Word, LowerError> {
         let count = self.shift_count(b)?;
-        let r = if self.fam == Family::I32 {
+        let r = if self.fam.is_signed() {
             self.b.shift_right_arithmetic(self.t, None, a, count)
         } else {
             self.b.shift_right_logical(self.t, None, a, count)
@@ -492,9 +528,14 @@ impl Em {
         lo(r).map(Some)
     }
 
-    /// An integer constant of the compute dtype (`I32`/`U32`: the low 32 bits of `v`).
+    /// An integer constant of the compute dtype (`I32`/`U32`: the low 32 bits of `v`; `I64`/`U64`:
+    /// all 64, `-1` being all ones).
     pub(crate) fn iconst(&mut self, v: i64) -> Word {
-        self.b.constant_bit32(self.t, v as u32)
+        if self.fam.is_wide() {
+            self.b.constant_bit64(self.t, v as u64)
+        } else {
+            self.b.constant_bit32(self.t, v as u32)
+        }
     }
 
     /// `cond ? 1 : 0` in the integer compute dtype (the integer twin of [`Em::flag`]).
@@ -506,7 +547,7 @@ impl Em {
     /// The six comparisons at `I32` (signed) or `U32` (unsigned), as `1` / `0`.
     fn int_compare(&mut self, op: BinaryOp, a: Word, b: Word) -> Result<Option<Word>, LowerError> {
         let bl = self.boolean;
-        let ordered = if self.fam == Family::I32 {
+        let ordered = if self.fam.is_signed() {
             self.signed_order(op, a, b)
         } else {
             self.unsigned_order(op, a, b)
@@ -561,10 +602,14 @@ impl Em {
         let bl = self.boolean;
         let zero = self.iconst(0);
         let by_zero = lo(self.b.i_equal(bl, None, b, zero))?;
-        if self.fam != Family::I32 {
+        if !self.fam.is_signed() {
             return Ok(by_zero);
         }
-        let min = self.iconst(i64::from(i32::MIN));
+        let min = self.iconst(if self.fam.is_wide() {
+            i64::MIN
+        } else {
+            i64::from(i32::MIN)
+        });
         let neg1 = self.iconst(-1);
         let a_min = lo(self.b.i_equal(bl, None, a, min))?;
         let b_neg1 = lo(self.b.i_equal(bl, None, b, neg1))?;
@@ -581,7 +626,7 @@ impl Em {
         let bad = self.div_is_special(a, b)?;
         let one = self.iconst(1);
         let safe = lo(self.b.select(t, None, bad, one, b))?;
-        if self.fam == Family::I32 {
+        if self.fam.is_signed() {
             lo(self.b.s_div(t, None, a, safe))
         } else {
             lo(self.b.u_div(t, None, a, safe))
@@ -660,11 +705,13 @@ impl Em {
     }
 
     /// An exact integer constant (`ScalarExpr::ConstInt`) at the integer compute dtype. A leaf of
-    /// another type, or a value the 32-bit dtype cannot hold exactly, is declined, not truncated.
+    /// another type, or a value the dtype cannot hold exactly, is declined, not truncated.
     pub(crate) fn constant_int(&mut self, v: i64, t: ElementKind) -> Spelling {
         let fits = match self.fam {
             Family::I32 => i32::try_from(v).is_ok(),
             Family::U32 => u32::try_from(v).is_ok(),
+            Family::I64 => true,
+            Family::U64 => v >= 0,
             _ => false,
         };
         if t != self.dtype || !fits {

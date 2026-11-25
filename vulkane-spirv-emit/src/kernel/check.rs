@@ -14,7 +14,7 @@ pub(super) fn check_scope(kernel: &KernelFn) -> Result<(Family, [u32; 3], [u32; 
         detail: format!("check_kernel refused kernel `{}`: {e:?}", kernel.name),
     })?;
     let fam = match Family::of(kernel.compute) {
-        Some(f @ (Family::I32 | Family::U32)) => f,
+        Some(f) if !f.is_float() && !f.is_narrow() => f,
         _ => {
             return Err(refuse(
                 kernel,
@@ -123,7 +123,11 @@ fn sizes_array(kernel: &KernelFn, local: u32) -> bool {
 /// One parameter: a buffer of the compute dtype, or an extent scalar of it.
 fn check_param(kernel: &KernelFn, p: &Param, fam: Family) -> Result<(), LowerError> {
     match &p.kind {
-        ParamKind::Buffer { elem, .. } if Family::of(*elem) == Some(fam) => Ok(()),
+        ParamKind::Buffer { elem, .. }
+            if Family::of(*elem).is_some_and(|f| f == fam || f.is_narrow()) =>
+        {
+            Ok(())
+        }
         ParamKind::Buffer { elem, .. } => Err(refuse(
             kernel,
             format!(
@@ -152,7 +156,8 @@ pub(super) fn check_params_and_locals(kernel: &KernelFn, fam: Family) -> Result<
         check_param(kernel, p, fam)?;
     }
     for (i, l) in kernel.locals.iter().enumerate() {
-        if l.lanes != 1 || Family::of(l.elem) != Some(fam) {
+        let fits = Family::of(l.elem).is_some_and(|f| f == fam || f.is_narrow());
+        if l.lanes != 1 || !fits {
             return Err(refuse(
                 kernel,
                 format!("local {i} is not a scalar of the compute dtype"),

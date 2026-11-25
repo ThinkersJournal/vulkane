@@ -101,6 +101,12 @@ impl Gpu {
         })
     }
 
+    /// The device's `shaderInt64` readout (`VkPhysicalDeviceFeatures`), for a skip line.
+    #[allow(dead_code)]
+    pub(crate) fn shader_int64(&self) -> bool {
+        self.physical.supported_features().shaderInt64 != 0
+    }
+
     /// The subgroup size the device runs compute at (`VkPhysicalDeviceSubgroupProperties`).
     #[allow(dead_code)]
     pub(crate) fn subgroup_size(&self) -> u32 {
