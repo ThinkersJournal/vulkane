@@ -56,6 +56,20 @@
 //! with the same bits; `float2`, `half4` and `uchar4` are not spelled. FP8 is declined by name: MSL 4.1 2.21 has the FP8
 //! formats only as `packed_numeric_type` and tensor format tags.
 //!
+//! ## SIMD-group functions: not lowered, on a ruling
+//!
+//! MSL 4.1 6.10.2 has a function for most `Stmt::Collective` kinds: `simd_shuffle`, `simd_shuffle_up`, `simd_shuffle_down`,
+//! `simd_shuffle_xor`, `simd_all`, `simd_any`, `simd_ballot`, `simd_sum`, `simd_product`, `simd_max`, `simd_min`,
+//! `simd_and`, `simd_or`, `simd_xor`, `simd_prefix_inclusive_sum`, `simd_prefix_exclusive_sum` and `simd_broadcast`.
+//! None is emitted. `Collective` and `CollectiveTuple` are two of the twelve statements of board 434 C: CireSnave
+//! 2026-11-13, verbatim, *"emitters may lower AsyncWait/CopyAsync/AsyncCommit/Collective for NVIDIA devices ... and decline
+//! by name for non-NVIDIA devices"*. Metal is not an NVIDIA device, so every kind is refused by name before lowering
+//! (`tests/patent_decline.rs` pins each kind, at six nesting depths). Only CireSnave can change that ruling. Were it
+//! lifted, the mapping would still not be one to one: the MSL functions act on the *active* threads (6.10.2: "A thread
+//! needs to only read data from another active thread"; `simd_ballot` "sets the bits that correspond to inactive threads
+//! to 0") where the IR's collective is over every lane of its scope, and `T` excludes `bool`, `bfloat`, `long` and `ulong`.
+//! What is lowered is not a collective: `LaneId`, `SubgroupId`, `SubgroupSize` and `simdgroup_barrier`.
+//!
 //! ## Declined by name
 //!
 //! A kernel named with an MSL keyword or type name (`float`, `kernel`, `tid`, ...: `kernel void float(` cannot compile),

@@ -2,14 +2,19 @@
 //! The statements declined for possible patent exposure (board 434 C extended; NVIDIA US11803380B2, US12204897B2)
 //! are refused **by name** with a typed error, at the top level and at any `If`/`For`/`While` depth.
 //!
-//! Controls: a kernel without a declined statement is still refused (this emitter does not lower kernels yet) but the
-//! refusal does NOT carry the declined marker, so the assertion below can tell the two refusals apart; and the
-//! walk visits all seven names, so a name dropped from the table fails here.
+//! Controls: a kernel that holds no declined statement is not refused with the declined marker (the walk would
+//! otherwise refuse everything), so the assertions below can tell a declined statement from an undeclined one; and the
+//! walk visits every name, so a name dropped from the table fails here.
+//!
+//! Every kind of `Stmt::Collective` is pinned separately (ROADMAP 8c, 8o): Metal has a SIMD-group function for most of
+//! them (MSL 4.1 6.10.2), and none may be lowered.
 
 use unpopped::backend::{Backend, LowerError};
 use unpopped::exec::{AllocDecl, Extent, LaunchShape, MemorySpace, Scope};
 use unpopped::ir::{ReduceOp, ScalarExpr};
-use unpopped::kernel::{Block, BufferRole, CollectiveKind, KernelFn, Param, Place, Stmt};
+use unpopped::kernel::{
+    Block, BufferRole, CollectiveKind, KernelFn, Param, Place, ShuffleMode, Stmt, VoteKind,
+};
 use unpopped_vocab::ElementKind;
 use vulkane_msl_emit::Msl;
 
@@ -195,6 +200,21 @@ fn nest_while(s: Stmt) -> Stmt {
     }
 }
 
+/// The nesting shapes a declined statement is hidden in.
+fn shapes() -> Vec<Shape> {
+    vec![
+        ("top level", Box::new(|s| vec![s])),
+        ("if then", Box::new(|s| vec![nest_if_then(s)])),
+        ("if else", Box::new(|s| vec![nest_if_else(s)])),
+        ("for", Box::new(|s| vec![nest_for(s)])),
+        ("while", Box::new(|s| vec![nest_while(s)])),
+        (
+            "for>if>while",
+            Box::new(|s| vec![nest_for(nest_if_else(nest_while(s)))]),
+        ),
+    ]
+}
+
 #[test]
 fn each_declined_statement_is_refused_by_name_at_every_depth() {
     assert_eq!(
@@ -203,18 +223,7 @@ fn each_declined_statement_is_refused_by_name_at_every_depth() {
         "the declined list is twelve statements"
     );
     for (name, marker, _) in declined() {
-        let shapes: Vec<Shape> = vec![
-            ("top level", Box::new(|s| vec![s])),
-            ("if then", Box::new(|s| vec![nest_if_then(s)])),
-            ("if else", Box::new(|s| vec![nest_if_else(s)])),
-            ("for", Box::new(|s| vec![nest_for(s)])),
-            ("while", Box::new(|s| vec![nest_while(s)])),
-            (
-                "for>if>while",
-                Box::new(|s| vec![nest_for(nest_if_else(nest_while(s)))]),
-            ),
-        ];
-        for (where_, build) in shapes {
+        for (where_, build) in shapes() {
             let stmt = declined()
                 .into_iter()
                 .find(|(n, _, _)| *n == name)
@@ -243,4 +252,76 @@ fn a_kernel_without_a_declined_statement_is_refused_without_the_marker() {
     );
     let empty = refusal(vec![]);
     assert!(!empty.contains(MARKER_434C), "{empty}");
+}
+
+/// Every `CollectiveKind` the IR has, with the MSL 4.1 6.10.2 function that would spell it (so a reader sees what is NOT
+/// lowered): all are refused by name, because the statement is one of board 434 C.
+fn every_collective_kind() -> Vec<(&'static str, CollectiveKind)> {
+    use ReduceOp::{And, Max, Min, Or, Prod, Sum, Xor};
+    let sh = |mode| CollectiveKind::Shuffle {
+        mode,
+        operand: u32c(1),
+    };
+    vec![
+        ("simd_shuffle", sh(ShuffleMode::Idx)),
+        ("simd_shuffle_up", sh(ShuffleMode::Up)),
+        ("simd_shuffle_down", sh(ShuffleMode::Down)),
+        ("simd_shuffle_xor", sh(ShuffleMode::Xor)),
+        ("simd_all", CollectiveKind::Vote(VoteKind::All)),
+        ("simd_any", CollectiveKind::Vote(VoteKind::Any)),
+        ("simd_ballot", CollectiveKind::Vote(VoteKind::Ballot)),
+        ("simd_sum", CollectiveKind::Reduce(Sum)),
+        ("simd_product", CollectiveKind::Reduce(Prod)),
+        ("simd_max", CollectiveKind::Reduce(Max)),
+        ("simd_min", CollectiveKind::Reduce(Min)),
+        ("simd_and", CollectiveKind::Reduce(And)),
+        ("simd_or", CollectiveKind::Reduce(Or)),
+        ("simd_xor", CollectiveKind::Reduce(Xor)),
+        (
+            "simd_prefix_inclusive_sum",
+            CollectiveKind::Scan {
+                op: Sum,
+                exclusive: false,
+            },
+        ),
+        (
+            "simd_prefix_exclusive_sum",
+            CollectiveKind::Scan {
+                op: Sum,
+                exclusive: true,
+            },
+        ),
+        (
+            "simd_broadcast",
+            CollectiveKind::Broadcast { lane: u32c(0) },
+        ),
+        // No MSL function takes a user combine function.
+        (
+            "(none: user combine)",
+            CollectiveKind::ReduceWith { combine: 0 },
+        ),
+        (
+            "(none: user combine)",
+            CollectiveKind::ScanWith { combine: 0 },
+        ),
+    ]
+}
+
+#[test]
+fn every_kind_of_collective_is_refused_by_name_whatever_msl_function_would_spell_it() {
+    for (msl_fn, kind) in every_collective_kind() {
+        let stmt = Stmt::Collective {
+            kind: kind.clone(),
+            value: u32c(1),
+            result: 0,
+            scope: Scope::Subgroup,
+        };
+        for (shape, wrap) in shapes() {
+            let detail = refusal(wrap(stmt.clone()));
+            assert!(
+                detail.contains("Stmt::Collective") && detail.contains(MARKER_434C),
+                "{kind:?} (MSL {msl_fn}) at {shape}: {detail}"
+            );
+        }
+    }
 }
