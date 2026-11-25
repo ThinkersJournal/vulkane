@@ -23,11 +23,13 @@ use vulkane_kernel_text::{BIT_OPS, COMPARISONS, Dialect, Layout, operator};
 
 use crate::dialect::{Ids, barrier, fence};
 
-/// The MSL dialect of an `F32` or `F16` kernel; the integer one is [`crate::Msl`].
+/// The MSL dialect of an `F32`, `F16` or `Bf16` kernel; the integer one is [`crate::Msl`].
 #[derive(Debug, Default)]
 pub(crate) struct MslFloat {
     /// `true` for an `F16` kernel (`half`), `false` for `F32`.
     pub(crate) half: bool,
+    /// `true` for a `Bf16` kernel (`bfloat`, Metal 3.1 and later).
+    pub(crate) bf16: bool,
     /// The built-in ids the body read.
     pub(crate) ids: Ids,
 }
@@ -36,6 +38,7 @@ fn elem(t: ElementKind) -> Option<(&'static str, &'static str)> {
     match t {
         ElementKind::F32 => Some(("float", "0.0f")),
         ElementKind::F16 => Some(("half", "0.0h")),
+        ElementKind::Bf16 => Some(("bfloat", "static_cast<bfloat>(0.0f)")),
         ElementKind::I32 => Some(("int", "0")),
         ElementKind::U32 => Some(("uint", "0u")),
         _ => None,
@@ -56,6 +59,23 @@ fn bounds(to: ElementKind) -> [&'static str; 4] {
     }
 }
 
+/// A unary op on a `bfloat`. The math functions of MSL 6.6 take `half` and `float` only, so the exact ops go through
+/// `float`: widening a bfloat is exact, `fabs`, `floor`, `ceil`, `trunc` and `rint` of it need no more bits than it
+/// has (the result is an integer no larger than the input, or a power of two), so the narrowing back is exact.
+fn bfloat_unary(op: UnaryOp, x: &str) -> Option<String> {
+    let through_float = |f: &str| format!("static_cast<bfloat>({f}(static_cast<float>({x})))");
+    Some(match op {
+        UnaryOp::Neg => format!("(-{x})"),
+        UnaryOp::Sqr => format!("({x} * {x})"),
+        UnaryOp::Abs => through_float("fabs"),
+        UnaryOp::Floor => through_float("floor"),
+        UnaryOp::Ceil => through_float("ceil"),
+        UnaryOp::Trunc => through_float("trunc"),
+        UnaryOp::Round => through_float("rint"),
+        _ => return None,
+    })
+}
+
 impl Dialect for MslFloat {
     fn name(&self) -> &'static str {
         "msl"
@@ -69,8 +89,16 @@ impl Dialect for MslFloat {
         self.half
     }
 
+    fn bfloat(&self) -> bool {
+        self.bf16
+    }
+
     fn lit_float(&self, v: f64) -> Option<String> {
-        // The walker has checked `v` is exact at the kernel's width, so `as f32` loses nothing for a half.
+        // The walker has checked `v` is exact at the kernel's width, so `as f32` loses nothing for a half or a bfloat.
+        if self.bf16 {
+            // MSL 2.24: neither float nor half converts implicitly to bfloat, so the literal is an explicit cast.
+            return Some(format!("static_cast<bfloat>({:?}f)", v as f32));
+        }
         let suffix = if self.half { 'h' } else { 'f' };
         let text = format!("{:?}{suffix}", v as f32);
         Some(if text.starts_with('-') {
@@ -81,6 +109,9 @@ impl Dialect for MslFloat {
     }
 
     fn float_unary(&self, op: UnaryOp, x: &str) -> Option<String> {
+        if self.bf16 {
+            return bfloat_unary(op, x);
+        }
         Some(match op {
             UnaryOp::Neg => format!("(-{x})"),
             UnaryOp::Abs => format!("fabs({x})"),
@@ -118,12 +149,14 @@ impl Dialect for MslFloat {
         round: RoundMode,
     ) -> Option<String> {
         let (ty, _) = elem(to)?;
-        let is_float = |t| matches!(t, ElementKind::F32 | ElementKind::F16);
+        let is_float = |t| matches!(t, ElementKind::F32 | ElementKind::F16 | ElementKind::Bf16);
         if is_float(from) && is_float(to) {
             // Widening is exact; narrowing rounds to nearest even (MSL 2.23, `static_cast`).
             return Some(format!("(({ty})({x}))"));
         }
-        if from == ElementKind::F16 || to == ElementKind::F16 {
+        if matches!(from, ElementKind::F16 | ElementKind::Bf16)
+            || matches!(to, ElementKind::F16 | ElementKind::Bf16)
+        {
             // Half to or from an integer is not spelled: declined by name, not guessed.
             return None;
         }

@@ -13,7 +13,7 @@ use unpopped_vocab::ElementKind;
 use vulkane_msl_emit::Msl;
 use vulkane_test_support::{
     atomic_kernel, float_kernel, flow_kernel, grid_kernel, narrow_kernel, private_kernel,
-    reverse_kernel, subgroup_kernel, wide_kernel,
+    reverse_kernel, subgroup_kernel, vector_kernel, wide_kernel,
 };
 
 const BLOCK: u32 = 64;
@@ -288,12 +288,63 @@ fn a_kernel_named_like_an_msl_type_is_declined_not_emitted() {
 }
 
 #[test]
-fn bf16_and_the_inexact_half_ops_are_declined_by_name() {
-    let bf = decline(&float_kernel::float_kernel(
-        ElementKind::Bf16,
-        float_kernel::Case::MulAdd,
-    ));
-    assert!(bf.contains("msl"), "{bf}");
+fn a_bf16_kernel_is_spelled_bfloat_with_explicit_casts_and_exact_unary_ops_through_float() {
+    let src = text(&float_k(ElementKind::Bf16, float_kernel::Case::MulAdd));
+    assert!(src.contains("device const bfloat* b0"), "{src}");
+    assert!(
+        src.contains("bfloat l0 = static_cast<bfloat>(0.0f);"),
+        "{src}"
+    );
+    assert!(src.contains("const bfloat p0 = "), "{src}");
+    // bfloat has no implicit conversion from float (MSL 2.24): a literal is an explicit cast.
+    assert!(text(&float_plus(ElementKind::Bf16, 1.5)).contains("static_cast<bfloat>(1.5f)"));
+    // The math functions of MSL 6.6 take half and float only, so a unary op goes through float.
+    let floor = text(&float_k(ElementKind::Bf16, float_kernel::Case::Floor));
+    assert!(
+        floor.contains("static_cast<bfloat>(floor(static_cast<float>("),
+        "{floor}"
+    );
+    let max = text(&float_k(ElementKind::Bf16, float_kernel::Case::Max));
+    assert!(max.contains("isnan("), "{max}");
+}
+
+#[test]
+fn packed_vector_locals_lower_as_scalars_lane_by_lane_with_the_same_bits() {
+    // The walker scalarizes `Pack`/`Extract` before any dialect sees them, so a `vec2`/`vec4` kernel lowers through the
+    // scalar float arm: no `float2`/`float4` is spelled (a native vector would give the same bits).
+    for lanes in [2, 4] {
+        let mut k = vector_kernel::vector_kernel(lanes, 0);
+        k.name = "vector_case".to_string();
+        let src = text(&k);
+        assert!(!src.contains("float2") && !src.contains("float4"), "{src}");
+        assert!(src.contains("device const float* b0"), "{src}");
+        assert!(
+            src.contains("const float p"),
+            "one pinned temp per lane op: {src}"
+        );
+    }
+}
+
+#[test]
+fn fp8_is_declined_by_name_because_msl_has_only_format_tags_for_it() {
+    // MSL 4.1 2.21: the FP8 types are `packed_numeric_type` format tags (`metal_fp8_e4m3_format`, ...) and tensor
+    // element types, not scalar types a kernel computes or stores through, so there is nothing to spell.
+    for ty in [ElementKind::Fp8E4M3FN, ElementKind::Fp8E5M2] {
+        let d = decline(&float_k(ty, float_kernel::Case::MulAdd));
+        assert!(d.contains(&format!("{ty:?}")) && d.contains("msl"), "{d}");
+    }
+}
+
+#[test]
+fn a_bf16_constant_not_exact_at_bfloat_is_declined() {
+    // 0.1 is not exact at bfloat; 1.0078125 = 1 + 2^-7 is the next bfloat after 1.0, 1.00390625 = 1 + 2^-8 is not one.
+    assert!(text(&float_plus(ElementKind::Bf16, 1.007_812_5)).contains("static_cast<bfloat>"));
+    let d = decline(&float_plus(ElementKind::Bf16, 1.003_906_25));
+    assert!(d.contains("not a finite value exact"), "{d}");
+}
+
+#[test]
+fn the_inexact_half_ops_are_declined_by_name() {
     let sqrt = decline(&float_kernel::float_kernel(
         ElementKind::F16,
         float_kernel::Case::Sqrt,
