@@ -7,7 +7,7 @@ use unpopped::exec::{Extent, MemorySpace};
 use unpopped::kernel::{BufferRole, KernelFn, ParamKind};
 use unpopped_vocab::ElementKind;
 
-use crate::ops::Family;
+use crate::family::Family;
 use crate::skeleton::{element_type, header};
 
 /// An `Input` builtin variable of `vec3` type.
