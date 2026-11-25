@@ -36,7 +36,7 @@
 //! IEEE, as C without `-ffast-math` (the `Numerics` default: denormals honoured, no flush): the
 //! module declares `SignedZeroInfNanPreserve` and `DenormPreserve` at the kernel's width, so NaN,
 //! infinities, signed zeros and denormals are kept; every `OpFMul`/`OpFAdd`/`OpFSub` is
-//! `NoContraction` (no FMA the oracle does not do, fuel#568); nothing is `RelaxedPrecision`. The
+//! `NoContraction` (no FMA the source does not ask for, fuel#568; the Unpopped oracle rounds a statement once at f64 and cannot tell); nothing is `RelaxedPrecision`. The
 //! host must check [`required_features`]: `Float64` needs `shaderFloat64`, and the two modes need
 //! `shaderDenormPreserveFloat{32,64}` and `shaderSignedZeroInfNanPreserveFloat{32,64}`
 //! (`vulkane::safe::PhysicalDevice::float_controls_properties`); **the driver is not a guard**.

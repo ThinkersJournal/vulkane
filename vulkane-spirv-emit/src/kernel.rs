@@ -78,7 +78,9 @@ fn stmt_name(s: &Stmt) -> String {
 }
 
 /// Decorate every float add, subtract and multiply `NoContraction`, so a driver cannot fuse a
-/// multiply and an add into an FMA the oracle does not do (fuel#568).
+/// multiply and an add into an FMA the source does not ask for (fuel#568). The Unpopped oracle rounds a
+/// statement once at f64, so it cannot tell fused from unfused: the evidence is the instruction count
+/// and a host `f32` reference.
 fn no_contraction(m: &mut rspirv::dr::Module) {
     use rspirv::dr::{Instruction, Operand};
     use rspirv::spirv::{Decoration, Op};

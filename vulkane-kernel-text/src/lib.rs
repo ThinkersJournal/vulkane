@@ -52,8 +52,11 @@ pub fn lower_kernel(
         return Err(e);
     }
     let sc = scope::check(dialect, kernel)?;
+    // The body first: a rounding conversion in it adds a declaration to the prologue.
+    let mut body = String::new();
+    stmt::emit_body(dialect, kernel, &sc, &mut body)?;
     let mut out = dialect.prologue(&sc.layout(kernel));
-    stmt::emit_body(dialect, kernel, &sc, &mut out)?;
+    out.push_str(&body);
     out.push_str(dialect.epilogue());
     Ok(GeneratedKernel::new(kernel.name.clone(), out))
 }

@@ -81,6 +81,12 @@ impl Dialect for WgslKernel {
         "wgsl"
     }
 
+    fn float_refusal(&self) -> Option<&'static str> {
+        Some(
+            "WGSL has no float-control or contraction control (nothing like `precise`, `NoContraction` or `SignedZeroInfNanPreserve`), and its floating point evaluation rules let an implementation fuse a multiply and an add (a body of correctly rounded primitives is `correctly_rounded`, 0 ulp, in unpopped's precision contract, which a fused pair breaks) and leave NaN and infinity results indeterminate (subnormal flush alone is outside the contract's input domain and is not the reason), so a float kernel could not be held to that tier; naga writes none of those declarations either (`tests/kernel_float.rs` pins it)",
+        )
+    }
+
     fn prologue(&self, layout: &Layout) -> String {
         let t = ty(layout.signed);
         let [x, y, z] = layout.block;

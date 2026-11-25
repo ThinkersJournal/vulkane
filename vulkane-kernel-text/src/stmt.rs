@@ -9,7 +9,9 @@
 
 use unpopped::backend::LowerError;
 use unpopped::ir::ScalarExpr;
-use unpopped::kernel::{BarrierKind, Block, KernelFn, Place, Stmt};
+use unpopped::kernel::{BarrierKind, Block, KernelFn, ParamKind, Place, Stmt};
+use unpopped::types::{Ty, infer_ty_in};
+use unpopped_vocab::ElementKind;
 
 use crate::dialect::Dialect;
 use crate::expr;
@@ -25,6 +27,7 @@ struct W<'a> {
     out: &'a mut String,
     depth: usize,
     loops: u32,
+    pins: u32,
 }
 
 /// Write the body of `kernel` at one level of indentation.
@@ -41,6 +44,7 @@ pub(crate) fn emit_body(
         out,
         depth: 1,
         loops: 0,
+        pins: 0,
     };
     w.block(&kernel.body).map(drop)
 }
@@ -79,6 +83,65 @@ impl W<'_> {
             self.line(p);
         }
         Ok(root)
+    }
+
+    /// In a float kernel, `value` held in a temporary no compiler may fuse the operations of (a
+    /// stored `a * b + a` must round twice, as the oracle does); otherwise `value` itself.
+    fn pinned(&mut self, value: String, place: &Place) -> Result<String, LowerError> {
+        if !self.sc.float {
+            return Ok(value);
+        }
+        // The value has the element type of the place it is stored to.
+        let elem = match place {
+            Place::Logical { buffer, .. } => {
+                match &self.kernel.params[usize::try_from(*buffer).expect("buffer id fits usize")]
+                    .kind
+                {
+                    ParamKind::Buffer { elem, .. } => *elem,
+                    _ => self.kernel.compute,
+                }
+            }
+            _ => self.kernel.compute,
+        };
+        self.pinned_elem(value, elem)
+    }
+
+    /// `value`, of element type `elem`, held in a temporary (see [`Self::pinned`]).
+    fn pinned_elem(&mut self, value: String, elem: ElementKind) -> Result<String, LowerError> {
+        let ty = self.d.type_name(elem);
+        let Some(ty) = ty else {
+            return Err(self.no("a float kernel needs a float type name"));
+        };
+        let name = format!("p{}", self.pins);
+        self.pins += 1;
+        let decl = self.d.temp_typed(&ty, &name, &value);
+        self.line(&decl);
+        Ok(name)
+    }
+
+    /// The element type of `e` in this kernel.
+    fn elem_of(&self, e: &ScalarExpr) -> Result<ElementKind, LowerError> {
+        let tys: Vec<Ty> = self.kernel.locals.iter().map(|l| l.ty()).collect();
+        match infer_ty_in(e, self.kernel.compute, &tys) {
+            Ok(Ty::Scalar(t)) => Ok(t),
+            _ => Err(self.no("a condition whose type cannot be inferred")),
+        }
+    }
+
+    /// The boolean text of `cond != 0`. A float kernel's condition is a float (pinned first, so its
+    /// multiplies and adds are not fused) or an integer leaf (a loop counter, an execution id).
+    fn condition(&mut self, cond: &ScalarExpr) -> Result<String, LowerError> {
+        let c = self.expr(cond)?;
+        if !self.sc.float {
+            return Ok(self.d.truthy(&c, self.sc.signed));
+        }
+        let elem = self.elem_of(cond)?;
+        let c = if matches!(elem, ElementKind::F32 | ElementKind::F64) {
+            self.pinned_elem(c, elem)?
+        } else {
+            c
+        };
+        Ok(self.d.truthy_of(&c, elem))
     }
 
     /// Lower a block; `true` when it ended in a terminator.
@@ -171,6 +234,7 @@ impl W<'_> {
             Stmt::Store { place, value } => {
                 let e = self.element(place)?;
                 let v = self.expr(value)?;
+                let v = self.pinned(v, place)?;
                 let text = self.write_of(place, &e, &v)?;
                 self.emit(&text)
             }
@@ -214,8 +278,7 @@ impl W<'_> {
     }
 
     fn lower_if(&mut self, cond: &ScalarExpr, then: &Block, els: &Block) -> Result<(), LowerError> {
-        let c = self.expr(cond)?;
-        let t = self.d.truthy(&c, self.sc.signed);
+        let t = self.condition(cond)?;
         self.line(&format!("if {t} {{"));
         self.nested(then)?;
         if !els.0.is_empty() {
@@ -228,9 +291,8 @@ impl W<'_> {
     fn lower_while(&mut self, cond: &ScalarExpr, body: &Block) -> Result<(), LowerError> {
         self.line("while (true) {");
         self.depth += 1;
-        let c = self.expr(cond);
-        let r = c.and_then(|c| {
-            let t = self.d.truthy(&c, self.sc.signed);
+        let c = self.condition(cond);
+        let r = c.and_then(|t| {
             self.line(&format!("if (!{t}) {{ break; }}"));
             self.block(body).map(drop)
         });
@@ -241,9 +303,14 @@ impl W<'_> {
 
     /// The loop test: `i < end` for a positive step, `i > end` for a negative one (`I32` only); a
     /// zero step is false.
-    fn counted_test(&self, i: &str, e: &str, s: &str) -> String {
-        let zero = self.d.lit(0, self.sc.signed);
-        if self.sc.signed {
+    fn counted_test(&self, i: &str, e: &str, s: &str, signed: bool) -> String {
+        let zero = if self.sc.float {
+            // A float kernel's counter is an integer local, not the compute dtype.
+            if signed { "0" } else { "0u" }.to_string()
+        } else {
+            self.d.lit(0, signed)
+        };
+        if signed {
             format!("(({s} > {zero} && {i} < {e}) || ({s} < {zero} && {i} > {e}))")
         } else {
             format!("({s} != {zero} && {i} < {e})")
@@ -266,6 +333,16 @@ impl W<'_> {
         self.emit("}")
     }
 
+    /// The counter local's element type and whether it is signed: the compute dtype's own, except in
+    /// a float kernel, whose counters are `I32`/`U32` locals.
+    fn counter(&self, local: u32) -> (ElementKind, bool) {
+        if !self.sc.float {
+            return (self.kernel.compute, self.sc.signed);
+        }
+        let kind = self.kernel.locals[usize::try_from(local).expect("local id fits usize")].elem;
+        (kind, kind == ElementKind::I32)
+    }
+
     fn for_in_scope(
         &mut self,
         local: u32,
@@ -273,12 +350,25 @@ impl W<'_> {
         [start, end, step]: [&ScalarExpr; 3],
         body: &Block,
     ) -> Result<(), LowerError> {
-        let signed = self.sc.signed;
+        let (kind, signed) = self.counter(local);
         let (start, end, step) = (self.expr(start)?, self.expr(end)?, self.expr(step)?);
-        self.line(&self.d.bound(&format!("e{n}"), &end, signed));
-        self.line(&self.d.bound(&format!("s{n}"), &step, signed));
+        let (eb, sb) = (format!("e{n}"), format!("s{n}"));
+        let (end_decl, step_decl) = if self.sc.float {
+            let ty = self.d.type_name(kind).unwrap_or_default();
+            (
+                self.d.temp_typed(&ty, &eb, &end),
+                self.d.temp_typed(&ty, &sb, &step),
+            )
+        } else {
+            (
+                self.d.bound(&eb, &end, signed),
+                self.d.bound(&sb, &step, signed),
+            )
+        };
+        self.line(&end_decl);
+        self.line(&step_decl);
         let (i, e, s) = (format!("l{local}"), format!("e{n}"), format!("s{n}"));
-        let test = self.counted_test(&i, &e, &s);
+        let test = self.counted_test(&i, &e, &s, signed);
         self.line(&format!(
             "for ({i} = {start}; {test}; {i} = ({i} + {s})) {{"
         ));

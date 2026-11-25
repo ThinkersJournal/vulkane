@@ -24,9 +24,11 @@
 use rspirv::spirv::{LoopControl, SelectionControl, Word};
 use unpopped::ir::ScalarExpr;
 use unpopped::kernel::{Block, Stmt};
+use unpopped::types::{Ty, infer_ty_in};
+use unpopped_vocab::ElementKind;
 
 use super::{Kc, refuse};
-use crate::ops::lo;
+use crate::ops::{Family, lo};
 use unpopped::backend::LowerError;
 
 /// What keeps a loop running: a counter against its bound, or a condition.
@@ -61,12 +63,42 @@ impl Kc<'_> {
         lo(self.em.borrow_mut().b.begin_block(Some(label))).map(drop)
     }
 
-    /// `cond != 0` as a boolean id.
+    /// The element type of `e` in this kernel.
+    fn elem_of(&self, e: &ScalarExpr) -> Result<ElementKind, LowerError> {
+        let tys: Vec<Ty> = self.kernel.locals.iter().map(|l| l.ty()).collect();
+        match infer_ty_in(e, self.kernel.compute, &tys) {
+            Ok(Ty::Scalar(t)) => Ok(t),
+            _ => Err(refuse(
+                self.kernel,
+                "a condition whose type cannot be inferred",
+            )),
+        }
+    }
+
+    /// `cond != 0` as a boolean id: unordered `!=` for a float (a NaN is true, as `Select` has it),
+    /// integer `!=` for an integer leaf of a float kernel (a loop counter, an execution id).
     fn truthy(&self, cond: &ScalarExpr) -> Result<Word, LowerError> {
+        let elem = self.elem_of(cond)?;
+        let (float_cond, fam) = {
+            let e = self.em.borrow();
+            (e.fam.is_float(), e.fam)
+        };
         let v = self.expr(cond)?;
         let mut e = self.em.borrow_mut();
-        let zero = e.iconst(0);
         let bl = e.boolean;
+        if float_cond && Family::of(elem).is_some_and(Family::is_float) {
+            if Family::of(elem) != Some(fam) {
+                drop(e);
+                return Err(refuse(
+                    self.kernel,
+                    format!("a {elem:?} condition in a {fam:?} kernel is not lowered"),
+                ));
+            }
+            let zero = e.fconst(0.0);
+            return lo(e.b.f_unord_not_equal(bl, None, v, zero));
+        }
+        let (ty, zero) = e.int_zero(elem);
+        let _ = ty;
         lo(e.b.i_not_equal(bl, None, v, zero))
     }
 
@@ -135,17 +167,20 @@ impl Kc<'_> {
     /// The loop test for a counted loop: `i < end` for a positive step, `i > end` for a negative
     /// one (`I32` only); a zero step is false.
     fn counted_test(&self, local: u32, end: Word, step: Word) -> Result<Word, LowerError> {
-        let var = self.locals[usize::try_from(local).expect("local id fits usize")];
-        let (t, fam) = {
-            let e = self.em.borrow();
-            (e.t, e.fam)
-        };
+        let slot = usize::try_from(local).expect("local id fits usize");
+        let var = self.locals[slot];
+        // The counter's own type: the compute dtype, or in a float kernel an `I32`/`U32` local.
+        let (t, signed, kind) = (
+            self.local_ty[slot],
+            Family::of(self.kernel.locals[slot].elem).is_some_and(Family::is_signed),
+            self.kernel.locals[slot].elem,
+        );
         let i = lo(self.em.borrow_mut().b.load(t, None, var, None, []))?;
-        if !fam.is_signed() {
-            self.unsigned_test(i, end, step)
+        if !signed {
+            self.unsigned_test(i, end, step, kind)
         } else {
-            let up = self.directed(i, end, step, true)?;
-            let down = self.directed(i, end, step, false)?;
+            let up = self.directed(i, end, step, true, kind)?;
+            let down = self.directed(i, end, step, false, kind)?;
             let mut e = self.em.borrow_mut();
             let bl = e.boolean;
             lo(e.b.logical_or(bl, None, up, down))
@@ -153,18 +188,33 @@ impl Kc<'_> {
     }
 
     /// `step != 0 && i < end`: an unsigned step is never negative.
-    fn unsigned_test(&self, i: Word, end: Word, step: Word) -> Result<Word, LowerError> {
+    fn unsigned_test(
+        &self,
+        i: Word,
+        end: Word,
+        step: Word,
+        kind: ElementKind,
+    ) -> Result<Word, LowerError> {
         let mut e = self.em.borrow_mut();
-        let (bl, zero) = (e.boolean, e.iconst(0));
+        let bl = e.boolean;
+        let (_, zero) = e.int_zero(kind);
         let moving = lo(e.b.i_not_equal(bl, None, step, zero))?;
         let below = lo(e.b.u_less_than(bl, None, i, end))?;
         lo(e.b.logical_and(bl, None, moving, below))
     }
 
     /// `step > 0 && i < end` when `up`, else `step < 0 && i > end` (signed).
-    fn directed(&self, i: Word, end: Word, step: Word, up: bool) -> Result<Word, LowerError> {
+    fn directed(
+        &self,
+        i: Word,
+        end: Word,
+        step: Word,
+        up: bool,
+        kind: ElementKind,
+    ) -> Result<Word, LowerError> {
         let mut e = self.em.borrow_mut();
-        let (bl, zero) = (e.boolean, e.iconst(0));
+        let bl = e.boolean;
+        let (_, zero) = e.int_zero(kind);
         let (sign, order) = if up {
             (
                 e.b.s_greater_than(bl, None, step, zero),
@@ -239,9 +289,9 @@ impl Kc<'_> {
 
     /// `local += step`.
     fn advance(&self, local: u32, step: Word) -> Result<(), LowerError> {
-        let var = self.locals[usize::try_from(local).expect("local id fits usize")];
+        let slot = usize::try_from(local).expect("local id fits usize");
+        let (var, t) = (self.locals[slot], self.local_ty[slot]);
         let mut e = self.em.borrow_mut();
-        let t = e.t;
         let i = lo(e.b.load(t, None, var, None, []))?;
         let next = lo(e.b.i_add(t, None, i, step))?;
         lo(e.b.store(var, next, None, []))

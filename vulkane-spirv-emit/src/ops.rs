@@ -231,7 +231,7 @@ impl Em {
         }
     }
 
-    fn fconst(&mut self, v: f64) -> Word {
+    pub(crate) fn fconst(&mut self, v: f64) -> Word {
         match self.fam {
             Family::F64 => self.b.constant_bit64(self.t, v.to_bits()),
             Family::F16 => {
@@ -578,6 +578,17 @@ impl Em {
         }
     }
 
+    /// The integer type of `kind` and its zero: the compute dtype's own when `kind` is it, else a
+    /// 32-bit integer (the counters and execution ids of a float kernel).
+    pub(crate) fn int_zero(&mut self, kind: ElementKind) -> (Word, Word) {
+        if Family::of(kind) == Some(self.fam) {
+            return (self.t, self.iconst(0));
+        }
+        let signed = Family::of(kind).is_some_and(Family::is_signed);
+        let ty = self.b.type_int(32, u32::from(signed));
+        (ty, self.b.constant_bit32(ty, 0))
+    }
+
     /// `cond ? 1 : 0` in the integer compute dtype (the integer twin of [`Em::flag`]).
     fn int_flag(&mut self, cond: Word) -> Result<Word, LowerError> {
         let (one, zero) = (self.iconst(1), self.iconst(0));
@@ -760,6 +771,19 @@ impl Em {
     /// An exact integer constant (`ScalarExpr::ConstInt`) at the integer compute dtype. A leaf of
     /// another type, or a value the dtype cannot hold exactly, is declined, not truncated.
     pub(crate) fn constant_int(&mut self, v: i64, t: ElementKind) -> Spelling {
+        if self.fam.is_float() && matches!(t, ElementKind::I32 | ElementKind::U32) {
+            // A float kernel's integers are its loop counters and indices: 32-bit leaves.
+            let signed = t == ElementKind::I32;
+            let fits = if signed {
+                i32::try_from(v).is_ok()
+            } else {
+                u32::try_from(v).is_ok()
+            };
+            if fits {
+                let ty = self.b.type_int(32, u32::from(signed));
+                return sp(self.b.constant_bit32(ty, v as u32));
+            }
+        }
         let fits = match self.fam {
             Family::I32 => i32::try_from(v).is_ok(),
             Family::U32 => u32::try_from(v).is_ok(),
