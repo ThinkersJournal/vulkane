@@ -28,7 +28,8 @@ use unpopped::types::{Ty, infer_ty_in};
 use unpopped_vocab::ElementKind;
 
 use super::{Kc, refuse};
-use crate::ops::{Family, lo};
+use crate::family::Family;
+use crate::ops::lo;
 use unpopped::backend::LowerError;
 
 /// What keeps a loop running: a counter against its bound, or a condition.
