@@ -107,7 +107,10 @@ fn ops_whose_vulkan_bound_is_looser_than_the_contract_tier_are_declined_by_name(
 }
 
 #[path = "../tests/support/float_flow_kernel.rs"]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared test module: each test binary compiles it whole but uses part of it"
+)]
 mod float_flow_kernel;
 
 /// `If`, `While` and `For` in a float kernel give valid modules for both counter types, with the
