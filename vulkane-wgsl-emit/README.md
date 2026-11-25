@@ -9,7 +9,7 @@ Dtypes: `f32` (and `F32Strict`), `i32`, `u32`. Everything else is a **typed decl
 `f64`, no 64-bit or 8-bit integers (and no 16-bit integers), and `f16` needs `enable f16;` (not emitted yet). Ops with no exact
 WGSL spelling (`erf` family, `copysign`, `nextafter`, a fused `fma`, casts, integer div/rem) decline with the op named.
 
-WGSL has no way to request IEEE subnormal handling, so f32 results near zero are the device's. The emitted header says so.
+WGSL has no way to request IEEE subnormal handling, so f32 results near zero are the device's, and its specification (15.7.5) lets an implementation reassociate and fuse operations, so a multiply feeding an add may round once. The emitted header says both.
 
 Not yet on crates.io (first publish is the PM's). Licensed under either of Apache-2.0 or MIT, at your option.
 
