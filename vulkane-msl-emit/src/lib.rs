@@ -171,7 +171,7 @@ impl Backend for Msl {
         {
             return Err(LowerError::UnsupportedKernel {
                 detail: format!(
-                    "msl backend: a scalar parameter is not lowered (a Metal function constant or `constant` buffer is not spelled yet; kernel `{}`)",
+                    "msl backend: a scalar parameter is not lowered: the shared walker lowers one only as the extent of a shared array, and the MSL specification (5.8, function constants) does not say that a function constant may bound an array, which cannot be checked without a Metal compiler (kernel `{}`)",
                     kernel.name
                 ),
             });
