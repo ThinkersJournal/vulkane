@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! The MSL spellings of an `F32` kernel (ROADMAP row 8o, slice 2): the float arm of the shared walker.
+//! The MSL spellings of an `F32` or `F16` kernel (ROADMAP row 8o): the float arm of the shared walker.
 //!
 //! Metal compiles with fast math on by default (spec 1.6: no NaNs, no INFs, no signed zeros, reassociation and
 //! fused contraction allowed). The source therefore opens with `#pragma METAL fp math_mode(safe)`
@@ -23,13 +23,17 @@ use vulkane_kernel_text::{BIT_OPS, COMPARISONS, Dialect, Layout, operator};
 
 use crate::dialect::{axis, barrier, fence};
 
-/// The MSL dialect of an `F32` kernel; the integer one is [`crate::Msl`].
+/// The MSL dialect of an `F32` or `F16` kernel; the integer one is [`crate::Msl`].
 #[derive(Copy, Clone, Debug, Default)]
-pub(crate) struct MslFloat;
+pub(crate) struct MslFloat {
+    /// `true` for an `F16` kernel (`half`), `false` for `F32`.
+    pub(crate) half: bool,
+}
 
 fn elem(t: ElementKind) -> Option<(&'static str, &'static str)> {
     match t {
         ElementKind::F32 => Some(("float", "0.0f")),
+        ElementKind::F16 => Some(("half", "0.0h")),
         ElementKind::I32 => Some(("int", "0")),
         ElementKind::U32 => Some(("uint", "0u")),
         _ => None,
@@ -59,8 +63,14 @@ impl Dialect for MslFloat {
         true
     }
 
+    fn half(&self) -> bool {
+        self.half
+    }
+
     fn lit_float(&self, v: f64) -> Option<String> {
-        let text = format!("{:?}f", v as f32);
+        // The walker has checked `v` is exact at the kernel's width, so `as f32` loses nothing for a half.
+        let suffix = if self.half { 'h' } else { 'f' };
+        let text = format!("{:?}{suffix}", v as f32);
         Some(if text.starts_with('-') {
             format!("({text})")
         } else {
@@ -106,6 +116,15 @@ impl Dialect for MslFloat {
         round: RoundMode,
     ) -> Option<String> {
         let (ty, _) = elem(to)?;
+        let is_float = |t| matches!(t, ElementKind::F32 | ElementKind::F16);
+        if is_float(from) && is_float(to) {
+            // Widening is exact; narrowing rounds to nearest even (MSL 2.23, `static_cast`).
+            return Some(format!("(({ty})({x}))"));
+        }
+        if from == ElementKind::F16 || to == ElementKind::F16 {
+            // Half to or from an integer is not spelled: declined by name, not guessed.
+            return None;
+        }
         if from != ElementKind::F32 || to == ElementKind::F32 {
             // int to int wraps; int to float rounds to nearest even; both are Metal's own conversion.
             return Some(format!("(({ty})({x}))"));
@@ -205,7 +224,8 @@ impl Dialect for MslFloat {
     }
 
     fn temp(&self, name: &str, rhs: &str, _signed: bool) -> String {
-        format!("const float {name} = {rhs};")
+        let t = if self.half { "half" } else { "float" };
+        format!("const {t} {name} = {rhs};")
     }
 
     fn bound(&self, name: &str, rhs: &str, signed: bool) -> String {

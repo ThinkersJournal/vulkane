@@ -24,7 +24,8 @@
 //! is `atomic_thread_fence` at threadgroup or device scope with `memory_order_seq_cst`: **every
 //! `MemoryOrder` collapses to the strongest**, stronger than asked, never weaker.
 //!
-//! `F32` kernels lower through `float.rs`: `#pragma METAL fp math_mode(safe)` and `contract(off)` (Metal 3.2;
+//! `F32` and `F16` kernels lower through `float.rs` (`half` buffers, locals and literals `1.5h`; half to or from `F32` is
+//! `static_cast`, round to nearest even per MSL 2.23; half to or from an integer is declined, not guessed): `#pragma METAL fp math_mode(safe)` and `contract(off)` (Metal 3.2;
 //! fast math is Metal's default: no NaN, INF or signed zeros, reassociation and fusion allowed; `safe` leaves FP
 //! contraction *on*, hence `contract(off)` as well), every operation pinned in a
 //! `const` temporary, the exact unary ops only (`rint` for round-half-even), NaN-propagating max/min, and
@@ -40,7 +41,8 @@
 //!
 //! ## Declined by name
 //!
-//! `F64` (Metal has no `double`), `Div`, `Sqrt` and the transcendentals (looser bound than the contract tier), other
+//! A kernel named with an MSL keyword or type name (`float`, `kernel`, `tid`, ...: `kernel void float(` cannot compile),
+//! `Bf16` (Metal 3.1 has `bfloat`, not spelled yet), `F64` (Metal has no `double`), `Div`, `Sqrt` and the transcendentals (looser bound than the contract tier), other
 //! 64-bit, 8/16-bit integer and vector kernels, float atomics, a subgroup-scope atomic, scalar parameters, subgroup and
 //! `BlockDim`/`GridDim` ids, and a `Barrier` or `Fence` at a scope other than block (and device for a
 //! fence): each a typed `UnsupportedKernel` from the shared walker naming it. The twelve NVIDIA-only
@@ -57,6 +59,71 @@ use unpopped_vocab::{ElementKind, TargetId};
 
 pub use dialect::Msl;
 
+/// MSL and C++ words a kernel function cannot be named (the entry point is emitted as `kernel void <name>(`).
+const RESERVED: &[&str] = &[
+    "bool",
+    "char",
+    "uchar",
+    "short",
+    "ushort",
+    "int",
+    "uint",
+    "long",
+    "ulong",
+    "half",
+    "bfloat",
+    "float",
+    "double",
+    "void",
+    "kernel",
+    "vertex",
+    "fragment",
+    "device",
+    "constant",
+    "thread",
+    "threadgroup",
+    "main",
+    "metal",
+    "auto",
+    "class",
+    "struct",
+    "union",
+    "enum",
+    "template",
+    "namespace",
+    "using",
+    "if",
+    "else",
+    "for",
+    "while",
+    "do",
+    "switch",
+    "case",
+    "default",
+    "break",
+    "continue",
+    "return",
+    "const",
+    "static",
+    "volatile",
+    "sizeof",
+    "typedef",
+    "true",
+    "false",
+    "this",
+    "new",
+    "delete",
+    "operator",
+    "public",
+    "private",
+    "protected",
+    "friend",
+    "virtual",
+    "typename",
+    "tid",
+    "gid",
+];
+
 impl Backend for Msl {
     fn name(&self) -> &str {
         "msl"
@@ -66,7 +133,9 @@ impl Backend for Msl {
     }
     fn supports_dtype(&self, dtype: ElementKind, _target: TargetId) -> DtypeSupport {
         match dtype {
-            ElementKind::I32 | ElementKind::U32 | ElementKind::F32 => DtypeSupport::Supported,
+            ElementKind::I32 | ElementKind::U32 | ElementKind::F32 | ElementKind::F16 => {
+                DtypeSupport::Supported
+            }
             _ => DtypeSupport::Unsupported,
         }
     }
@@ -79,6 +148,14 @@ impl Backend for Msl {
         })
     }
     fn lower_kernel(&self, kernel: &KernelFn) -> Result<GeneratedKernel, LowerError> {
+        if RESERVED.contains(&kernel.name.as_str()) {
+            return Err(LowerError::UnsupportedKernel {
+                detail: format!(
+                    "msl backend: the kernel name `{}` is an MSL keyword or type name, so `kernel void {}(` would not compile; rename the kernel",
+                    kernel.name, kernel.name
+                ),
+            });
+        }
         if kernel
             .params
             .iter()
@@ -91,8 +168,11 @@ impl Backend for Msl {
                 ),
             });
         }
-        if kernel.compute == ElementKind::F32 {
-            return vulkane_kernel_text::lower_kernel(&float::MslFloat, kernel);
+        if matches!(kernel.compute, ElementKind::F32 | ElementKind::F16) {
+            let d = float::MslFloat {
+                half: kernel.compute == ElementKind::F16,
+            };
+            return vulkane_kernel_text::lower_kernel(&d, kernel);
         }
         vulkane_kernel_text::lower_kernel(&Msl, kernel)
     }

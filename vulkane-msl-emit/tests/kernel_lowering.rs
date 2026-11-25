@@ -27,6 +27,13 @@ fn text(k: &KernelFn) -> String {
     lower(k).source
 }
 
+/// The shared float kernel under a name MSL accepts (the shared kernel is named `float`, an MSL type).
+fn float_k(ty: ElementKind, case: float_kernel::Case) -> KernelFn {
+    let mut k = float_kernel::float_kernel(ty, case);
+    k.name = "float_case".to_string();
+    k
+}
+
 fn decline(k: &KernelFn) -> String {
     match Msl.lower_kernel(k) {
         Err(LowerError::UnsupportedKernel { detail } | LowerError::UnsupportedOp { detail }) => {
@@ -178,10 +185,7 @@ fn what_is_not_spelled_is_declined_by_name() {
 
 #[test]
 fn an_f32_kernel_pins_safe_math_and_no_contraction_and_keeps_every_op_unfused() {
-    let src = text(&float_kernel::float_kernel(
-        ElementKind::F32,
-        float_kernel::Case::MulAdd,
-    ));
+    let src = text(&float_k(ElementKind::F32, float_kernel::Case::MulAdd));
     assert!(src.contains("#pragma METAL fp math_mode(safe)"), "{src}");
     assert!(src.contains("#pragma METAL fp contract(off)"), "{src}");
     assert!(src.contains("device const float*"), "{src}");
@@ -190,15 +194,9 @@ fn an_f32_kernel_pins_safe_math_and_no_contraction_and_keeps_every_op_unfused() 
 
 #[test]
 fn float_max_propagates_nan_and_floor_is_spelled() {
-    let max = text(&float_kernel::float_kernel(
-        ElementKind::F32,
-        float_kernel::Case::Max,
-    ));
+    let max = text(&float_k(ElementKind::F32, float_kernel::Case::Max));
     assert!(max.contains("isnan("), "{max}");
-    let floor = text(&float_kernel::float_kernel(
-        ElementKind::F32,
-        float_kernel::Case::Floor,
-    ));
+    let floor = text(&float_k(ElementKind::F32, float_kernel::Case::Floor));
     assert!(floor.contains("floor("), "{floor}");
 }
 
@@ -243,6 +241,64 @@ fn an_atomic_at_subgroup_scope_or_with_a_stronger_order_is_declined() {
         }
     }
     assert!(decline(&k).contains("msl"));
+}
+
+#[test]
+fn an_f16_kernel_is_spelled_half_end_to_end_with_the_same_pragmas() {
+    let src = text(&float_k(ElementKind::F16, float_kernel::Case::MulAdd));
+    assert!(src.contains("#pragma METAL fp contract(off)"), "{src}");
+    assert!(src.contains("device const half* b0"), "{src}");
+    assert!(src.contains("device half* b2"), "{src}");
+    assert!(src.contains("half l0 = 0.0h;"), "{src}");
+    assert!(src.contains("const half p0 = "), "{src}");
+    assert!(
+        !src.contains("float*") && !src.contains("float l") && !src.contains("const float"),
+        "no float spelling in a half kernel: {src}"
+    );
+}
+
+/// The float kernel with its stored value replaced by `a + <v>`.
+fn float_plus(ty: ElementKind, v: f64) -> KernelFn {
+    use unpopped::ir::ScalarExpr as E;
+    let mut k = float_k(ty, float_kernel::Case::MulAdd);
+    for st in &mut k.body.0 {
+        if let Stmt::Store { value, .. } = st {
+            *value = E::Add(Box::new(E::Local(0)), Box::new(E::Const(v)));
+        }
+    }
+    k
+}
+
+#[test]
+fn float_literals_carry_their_width_suffix_and_an_inexact_half_constant_is_declined() {
+    assert!(text(&float_plus(ElementKind::F16, 1.5)).contains("1.5h"));
+    assert!(text(&float_plus(ElementKind::F32, 1.5)).contains("1.5f"));
+    // 0.1 is not exact at half, so the walker declines it; negative literals are parenthesised.
+    let d = decline(&float_plus(ElementKind::F16, 0.1));
+    assert!(d.contains("not a finite value exact"), "{d}");
+    assert!(text(&float_plus(ElementKind::F16, -2.0)).contains("(-2.0h)"));
+}
+
+#[test]
+fn a_kernel_named_like_an_msl_type_is_declined_not_emitted() {
+    let k = float_kernel::float_kernel(ElementKind::F32, float_kernel::Case::MulAdd);
+    assert_eq!(k.name, "float");
+    let d = decline(&k);
+    assert!(d.contains("`float`") && d.contains("rename"), "{d}");
+}
+
+#[test]
+fn bf16_and_the_inexact_half_ops_are_declined_by_name() {
+    let bf = decline(&float_kernel::float_kernel(
+        ElementKind::Bf16,
+        float_kernel::Case::MulAdd,
+    ));
+    assert!(bf.contains("msl"), "{bf}");
+    let sqrt = decline(&float_kernel::float_kernel(
+        ElementKind::F16,
+        float_kernel::Case::Sqrt,
+    ));
+    assert!(sqrt.contains("msl"), "{sqrt}");
 }
 
 #[test]
