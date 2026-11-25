@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Shared test support for the Vulkane workspace (ROADMAP row 8n).
 
-// The helpers were `#[path]`-included into every test binary, which is why they carried per-file allows.
-// Here they are one library: some binaries use part of it, and its items are the API.
-#![allow(missing_docs, unreachable_pub)]
-
 pub mod atomic_kernel;
 pub mod atomic_wide_kernel;
 pub mod cases;

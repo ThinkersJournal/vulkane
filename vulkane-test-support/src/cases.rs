@@ -65,6 +65,7 @@ pub enum Domain {
 }
 
 impl Domain {
+    /// Whether the input row lies where the function is defined.
     pub fn holds(self, row: &[u32]) -> bool {
         let f = |i: usize| f32::from_bits(row[i]);
         match self {
