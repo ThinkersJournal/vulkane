@@ -686,15 +686,18 @@ jobs:
   spdx:
     name: Every source file declares the licence
     runs-on: ubuntu-latest
+    # 30, was 5: the first `cargo install coderipper` compile exceeds 5 minutes.
+    # The hosted-runner install is UNVERIFIED until this job's log is read.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      # The gate's own controls run FIRST. A checker nobody has watched fail is
-      # a checker nobody has evidence works, and a gate whose parser silently
-      # broke would report a clean tree rather than an error.
-      - name: Self-test the SPDX gate
-        run: python3 .github/spdx_gate.py --self-test
-      - name: Every tracked source file declares the workspace licence
-        run: python3 .github/spdx_gate.py
+      # The per-file SPDX/licence gate is now CodeRipper's SUP-016 (licence-tools#6,
+      # 159eb406), configured by `[sup016]` in `.coderipper.toml`. `.github/spdx_gate.py`
+      # stays on disk (the fleet compares its copies) but this job no longer runs it.
+      - name: Install coderipper 0.48.1
+        run: cargo install coderipper --version 0.48.1 --locked
+      - name: Every source file declares the licence (SUP-016)
+        run: coderipper check SUP-016 --project . --deny medium
 
   # No tracked text file contains a NUL byte (invisible in review, turns a file binary to git).
   # The population is printed; an empty population or a stale BINARY entry fails.
