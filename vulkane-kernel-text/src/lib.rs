@@ -27,6 +27,7 @@
 //! The twelve NVIDIA-only statements of board 434 C and its extension (`CopyAsync`, `Collective`,
 //! `MbarInit`, `WgmmaWait`, ...) are refused by name, at any nesting depth, before the walk starts.
 
+mod coverage;
 mod decline;
 mod dialect;
 mod expr;
@@ -34,6 +35,7 @@ mod scalarize;
 mod scope;
 mod stmt;
 
+pub use coverage::{Coverage, coverage, not_lowered_note};
 pub use decline::{DECLINED_434C, DECLINED_434C_EXT, declined_by_name};
 pub use dialect::{BIT_OPS, COMPARISONS, Decl, Dialect, Layout, operator};
 pub use scalarize::scalarize;
