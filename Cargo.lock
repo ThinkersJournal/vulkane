@@ -2151,6 +2151,16 @@ name = "vulkane-kernels-source"
 version = "0.25.5"
 
 [[package]]
+name = "vulkane-msl-emit"
+version = "0.25.5"
+dependencies = [
+ "unpopped",
+ "unpopped-vocab",
+ "vulkane-kernel-text",
+ "vulkane-test-support",
+]
+
+[[package]]
 name = "vulkane-slang-emit"
 version = "0.25.5"
 dependencies = [
