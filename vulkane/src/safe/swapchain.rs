@@ -16,7 +16,7 @@
 //! Each acquire/present cycle uses a fresh pair of semaphores so the
 //! pipeline can stay full while the user is rendering frame N+1.
 
-use super::device::DeviceInner;
+use super::device_inner::DeviceInner;
 use super::image::{ImageUsage, ImageView};
 use super::physical::PhysicalDevice;
 use super::surface::{PresentMode, Surface};

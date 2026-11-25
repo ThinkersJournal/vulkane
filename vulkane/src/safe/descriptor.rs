@@ -12,7 +12,7 @@
 //! The set layout becomes part of the [`PipelineLayout`](super::PipelineLayout),
 //! which is in turn part of the [`ComputePipeline`](super::ComputePipeline).
 
-use super::device::DeviceInner;
+use super::device_inner::DeviceInner;
 use super::image::{ImageLayout, ImageView, Sampler};
 use super::{Buffer, Device, Error, Result, check};
 use crate::raw::bindings::*;

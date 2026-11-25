@@ -36,7 +36,7 @@
 //! buffer.bind_memory(&memory, 0)?;
 //! ```
 
-use super::device::DeviceInner;
+use super::device_inner::DeviceInner;
 use super::pnext::PNextChain;
 use super::{Device, DeviceMemory, Error, Result, check};
 use crate::raw::bindings::*;

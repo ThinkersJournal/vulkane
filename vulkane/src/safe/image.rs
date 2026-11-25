@@ -17,7 +17,7 @@
 //!    HOST_VISIBLE memory.
 
 use super::buffer::MemoryRequirements;
-use super::device::DeviceInner;
+use super::device_inner::DeviceInner;
 use super::{Device, DeviceMemory, Error, Result, check};
 use crate::raw::bindings::*;
 use std::sync::Arc;

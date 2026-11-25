@@ -20,7 +20,7 @@
 //! memory type selection, sub-resource binding offsets, or manual
 //! mapping.
 
-use super::device::DeviceInner;
+use super::device_inner::DeviceInner;
 use super::pnext::PNextChain;
 use super::{Device, Error, Result, check};
 use crate::raw::bindings::*;

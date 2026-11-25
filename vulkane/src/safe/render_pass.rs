@@ -35,7 +35,7 @@
 //! )?;
 //! ```
 
-use super::device::DeviceInner;
+use super::device_inner::DeviceInner;
 use super::image::{Format, ImageLayout, ImageView};
 use super::{Device, Error, Result, check};
 use crate::raw::bindings::*;

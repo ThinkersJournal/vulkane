@@ -14,7 +14,7 @@
 //! caching compiled pipelines to disk.
 
 use super::descriptor::{DescriptorSetLayout, ShaderStageFlags};
-use super::device::DeviceInner;
+use super::device_inner::DeviceInner;
 use super::shader::ShaderModule;
 use super::{Device, Error, Result, check};
 use crate::raw::bindings::*;
