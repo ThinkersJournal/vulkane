@@ -13,12 +13,8 @@ use crate::tests::assert_valid;
 
 use crate::kernel_tests::reverse_kernel;
 
-#[path = "../tests/support/atomic_wide_kernel.rs"]
-#[allow(dead_code)]
-mod atomic_wide_kernel;
-#[path = "../tests/support/wide_kernel.rs"]
-#[allow(dead_code)]
-mod wide_kernel;
+use vulkane_test_support::atomic_wide_kernel;
+use vulkane_test_support::wide_kernel;
 
 #[test]
 fn a_64_bit_kernel_declares_int64_and_a_64_bit_type_and_validates() {

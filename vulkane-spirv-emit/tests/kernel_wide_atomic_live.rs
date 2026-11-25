@@ -5,13 +5,9 @@
 //! `shaderBufferInt64Atomics`; without them the test prints a `SKIP (unsupported)` line naming them.
 //! The control (the same add as a plain load/add/store) is reported, not asserted.
 
-#[path = "support/atomic_wide_kernel.rs"]
-mod atomic_wide_kernel;
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
-mod common;
-#[path = "support/gpu.rs"]
-mod gpu;
+use vulkane_test_support::atomic_wide_kernel;
+use vulkane_test_support::common;
+use vulkane_test_support::gpu;
 
 use atomic_wide_kernel::{B, BLOCKS, SENTINEL, THREADS, atomic_wide_kernel};
 use unpopped::backend::Backend;

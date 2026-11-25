@@ -2085,6 +2085,7 @@ dependencies = [
  "tempfile",
  "ureq",
  "vulkan_gen",
+ "vulkane-test-support",
  "vulkane_derive",
  "winit",
 ]
@@ -2099,6 +2100,7 @@ dependencies = [
  "vulkane",
  "vulkane-kernel-text",
  "vulkane-spirv-emit",
+ "vulkane-test-support",
 ]
 
 [[package]]
@@ -2115,6 +2117,7 @@ dependencies = [
  "vulkane-hlsl-parse",
  "vulkane-kernel-text",
  "vulkane-spirv-emit",
+ "vulkane-test-support",
 ]
 
 [[package]]
@@ -2167,6 +2170,7 @@ dependencies = [
  "vulkane",
  "vulkane-kernel-text",
  "vulkane-spirv-parse",
+ "vulkane-test-support",
 ]
 
 [[package]]
@@ -2180,6 +2184,13 @@ dependencies = [
 [[package]]
 name = "vulkane-test-support"
 version = "0.25.5"
+dependencies = [
+ "tempfile",
+ "unpopped",
+ "unpopped-vocab",
+ "vulkane",
+ "vulkane-spirv-emit",
+]
 
 [[package]]
 name = "vulkane-wgsl-emit"
@@ -2193,6 +2204,7 @@ dependencies = [
  "vulkane",
  "vulkane-kernel-text",
  "vulkane-spirv-emit",
+ "vulkane-test-support",
 ]
 
 [[package]]

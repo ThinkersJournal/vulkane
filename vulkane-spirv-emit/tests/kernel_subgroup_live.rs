@@ -7,13 +7,9 @@
 //! one size must lie in the range). This test applies the second rule: a device whose size is outside
 //! the range is a decline by name, and a range no device can have is refused by the emitter.
 
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
-mod common;
-#[path = "support/gpu.rs"]
-mod gpu;
-#[path = "support/subgroup_kernel.rs"]
-mod subgroup_kernel;
+use vulkane_test_support::common;
+use vulkane_test_support::gpu;
+use vulkane_test_support::subgroup_kernel;
 
 use unpopped::backend::{Backend, LowerError};
 use vulkane_spirv_emit::SpirV;

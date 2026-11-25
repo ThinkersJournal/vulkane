@@ -6,8 +6,7 @@
 //! can spell it, the pin test fails and the arm can be written. Without `dxc` the pin test follows
 //! `VULKANE_REQUIRE_DXC`.
 
-#[path = "../../vulkane-spirv-emit/tests/support/reverse_kernel.rs"]
-mod reverse_kernel;
+use vulkane_test_support::reverse_kernel;
 
 use std::process::Command;
 

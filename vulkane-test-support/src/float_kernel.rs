@@ -10,11 +10,11 @@ use unpopped::ir::{ArithOp, BinaryOp, ScalarExpr as E, UnaryOp};
 use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt};
 use unpopped_vocab::ElementKind;
 
-pub(crate) const THREADS: u32 = 256;
+pub const THREADS: u32 = 256;
 
 /// The expression under test.
 #[derive(Copy, Clone, Debug)]
-pub(crate) enum Case {
+pub enum Case {
     /// `a * b + a`: a multiply feeding an add, which a driver may fuse (so `NoContraction`).
     MulAdd,
     /// `Max(a, b)`, NaN-propagating, `a` on ties.
@@ -42,7 +42,7 @@ fn bx(e: E) -> Box<E> {
     Box::new(e)
 }
 
-pub(crate) fn float_kernel(ty: ElementKind, case: Case) -> KernelFn {
+pub fn float_kernel(ty: ElementKind, case: Case) -> KernelFn {
     let (a, b) = (E::Local(0), E::Local(1));
     let value = match case {
         Case::MulAdd => E::Add(bx(E::Mul(bx(a.clone()), bx(b))), bx(a)),
@@ -84,7 +84,7 @@ pub(crate) fn float_kernel(ty: ElementKind, case: Case) -> KernelFn {
 }
 
 /// The `(a, b)` pairs, as `f64` (rounded to `f32` for an `F32` kernel).
-pub(crate) const PAIRS: [(f64, f64); 14] = [
+pub const PAIRS: [(f64, f64); 14] = [
     (0.1, 3.0),
     (1e-30, 1e-10),
     (16_777_217.0, 1.0),
@@ -102,7 +102,7 @@ pub(crate) const PAIRS: [(f64, f64); 14] = [
 ];
 
 /// A host float: the same IEEE operations as the kernel, in native arithmetic.
-pub(crate) trait Fl: Copy {
+pub trait Fl: Copy {
     fn from_f64(v: f64) -> Self;
     fn mul_add_unfused(self, b: Self) -> Self;
     fn floor_(self) -> Self;
@@ -150,7 +150,7 @@ fl!(f32, u32);
 fl!(f64, u64);
 
 /// The expected result for `(a, b)` under `case`, in the kernel's own width.
-pub(crate) fn expect<T: Fl>(case: Case, a: T, b: T) -> T {
+pub fn expect<T: Fl>(case: Case, a: T, b: T) -> T {
     // NaN-propagating, `a` on ties (the `max_prop`/`min_prop` decomposition).
     let prop = |is_max: bool| {
         if a.is_nan_() {
@@ -173,7 +173,7 @@ pub(crate) fn expect<T: Fl>(case: Case, a: T, b: T) -> T {
 }
 
 /// Input words for `a` and `b`, and the expected output words, for `THREADS` threads.
-pub(crate) fn data<T: Fl>(case: Case) -> (Vec<u32>, Vec<u32>, Vec<u32>) {
+pub fn data<T: Fl>(case: Case) -> (Vec<u32>, Vec<u32>, Vec<u32>) {
     let (mut a, mut b, mut want) = (Vec::new(), Vec::new(), Vec::new());
     for t in 0..THREADS as usize {
         let (x, y) = PAIRS[t % PAIRS.len()];
@@ -187,7 +187,7 @@ pub(crate) fn data<T: Fl>(case: Case) -> (Vec<u32>, Vec<u32>, Vec<u32>) {
 
 /// Whether two result words agree: bit-exact, except that every NaN equals every NaN (payload and
 /// sign of a NaN are not part of the contract) and a `-0.0` must stay `-0.0` (bit-exact).
-pub(crate) fn same(width64: bool, got: &[u32], want: &[u32]) -> Result<(), String> {
+pub fn same(width64: bool, got: &[u32], want: &[u32]) -> Result<(), String> {
     let step = if width64 { 2 } else { 1 };
     for (i, (g, w)) in got.chunks(step).zip(want.chunks(step)).enumerate() {
         let nan = |c: &[u32]| {

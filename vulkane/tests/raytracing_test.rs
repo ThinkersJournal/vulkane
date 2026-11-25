@@ -13,7 +13,7 @@
 //! but never fatal. Only *device absence* is fatal, because only that is
 //! something `VULKANE_REQUIRE_DEVICE` is entitled to assert.
 
-mod common;
+use vulkane_test_support::common;
 
 use std::sync::Arc;
 use vulkane::safe::{

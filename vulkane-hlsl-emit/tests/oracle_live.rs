@@ -9,17 +9,11 @@
 //! `dxc` or a host C compiler the test follows `VULKANE_REQUIRE_DEVICE`, `VULKANE_REQUIRE_DXC` and
 //! `CI` rather than passing silently.
 
-#[path = "../../vulkane-spirv-emit/tests/support/cases.rs"]
-mod cases;
-#[path = "../../vulkane-spirv-emit/tests/support/cc.rs"]
-mod cc;
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
-mod common;
-#[path = "../../vulkane-spirv-emit/tests/support/gpu.rs"]
-mod gpu;
-#[path = "../../vulkane-spirv-emit/tests/support/host_c.rs"]
-mod host_c;
+use vulkane_test_support::cases;
+use vulkane_test_support::cc;
+use vulkane_test_support::common;
+use vulkane_test_support::gpu;
+use vulkane_test_support::host_c;
 
 use std::path::Path;
 use std::process::Command;

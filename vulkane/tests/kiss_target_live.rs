@@ -36,7 +36,7 @@
 
 #![cfg(feature = "kiss-target")]
 
-mod common;
+use vulkane_test_support::common;
 
 use kiss_vulkan_vocab::{CoopMatrix, Subgroup, VulkanTarget};
 use vulkane::kiss::DeviceCapabilities;

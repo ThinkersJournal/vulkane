@@ -21,9 +21,9 @@ use unpopped::ir::{BinaryOp, ScalarExpr as E};
 use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt};
 use unpopped_vocab::ElementKind::F32;
 
-pub(crate) const THREADS: usize = 256;
+pub const THREADS: usize = 256;
 
-pub(crate) const PAIRS: [(f32, f32); 14] = [
+pub const PAIRS: [(f32, f32); 14] = [
     (0.1, 3.0),
     (1e-30, 1e-10),
     (16_777_217.0, 1.0),
@@ -56,7 +56,7 @@ fn lane(local: u32, k: u8) -> E {
 }
 
 /// The kernel for `lanes` (2 or 4) storing lane `store` of the swapped vector.
-pub(crate) fn vector_kernel(lanes: u8, store: u8) -> KernelFn {
+pub fn vector_kernel(lanes: u8, store: u8) -> KernelFn {
     let (x, y) = (E::Local(0), E::Local(1));
     let packed = LocalDecl::packed(F32, lanes);
     let (init, w, order): (Vec<E>, E, Vec<u8>) = if lanes == 2 {
@@ -121,7 +121,7 @@ pub(crate) fn vector_kernel(lanes: u8, store: u8) -> KernelFn {
 
 /// What a variant computes on the host.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub(crate) enum Variant {
+pub enum Variant {
     Right,
     /// A fused multiply-add in the `lanes == 2` arithmetic.
     Fused,
@@ -158,7 +158,7 @@ fn w_lanes(lanes: u8, x: f32, y: f32, fused: bool) -> Vec<f32> {
 }
 
 /// The value the kernel stores in lane `store` for `(x, y)` under `variant`.
-pub(crate) fn host(lanes: u8, store: u8, x: f32, y: f32, variant: Variant) -> f32 {
+pub fn host(lanes: u8, store: u8, x: f32, y: f32, variant: Variant) -> f32 {
     let w = w_lanes(lanes, x, y, variant == Variant::Fused);
     let order: Vec<usize> = if lanes == 2 {
         vec![1, 0]
@@ -184,7 +184,7 @@ pub(crate) fn host(lanes: u8, store: u8, x: f32, y: f32, variant: Variant) -> f3
 }
 
 /// `(a words, b words, expected words)` for `lanes`, `store` and `variant`.
-pub(crate) fn data(lanes: u8, store: u8, variant: Variant) -> (Vec<u32>, Vec<u32>, Vec<u32>) {
+pub fn data(lanes: u8, store: u8, variant: Variant) -> (Vec<u32>, Vec<u32>, Vec<u32>) {
     let (mut a, mut bw, mut want) = (vec![], vec![], vec![]);
     for t in 0..THREADS {
         let (x, y) = PAIRS[t % PAIRS.len()];
@@ -196,7 +196,7 @@ pub(crate) fn data(lanes: u8, store: u8, variant: Variant) -> (Vec<u32>, Vec<u32
 }
 
 /// Bit-exact, every NaN equal to every NaN.
-pub(crate) fn same(got: &[u32], want: &[u32]) -> Result<(), String> {
+pub fn same(got: &[u32], want: &[u32]) -> Result<(), String> {
     for (t, (g, w)) in got.iter().zip(want).enumerate() {
         let nan = |x: u32| f32::from_bits(x).is_nan();
         if !(nan(*g) && nan(*w)) && g != w {

@@ -8,17 +8,11 @@
 //! WGSL has no f64. Without a device or a host C compiler the test follows `VULKANE_REQUIRE_DEVICE` and
 //! `CI` rather than passing silently. One WGSL compiler only (naga).
 
-#[path = "../../vulkane-spirv-emit/tests/support/cases.rs"]
-mod cases;
-#[path = "../../vulkane-spirv-emit/tests/support/cc.rs"]
-mod cc;
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
-mod common;
-#[path = "../../vulkane-spirv-emit/tests/support/gpu.rs"]
-mod gpu;
-#[path = "../../vulkane-spirv-emit/tests/support/host_c.rs"]
-mod host_c;
+use vulkane_test_support::cases;
+use vulkane_test_support::cc;
+use vulkane_test_support::common;
+use vulkane_test_support::gpu;
+use vulkane_test_support::host_c;
 
 use unpopped::try_generate;
 use unpopped_cpu_c::CpuC;

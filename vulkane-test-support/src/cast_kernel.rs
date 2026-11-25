@@ -12,21 +12,21 @@ use unpopped::ir::{CastSpec, RoundMode, Saturation, ScalarExpr as E};
 use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt};
 use unpopped_vocab::ElementKind::{self, F16, F32, F64, I32, U32};
 
-pub(crate) const THREADS: usize = 256;
+pub const THREADS: usize = 256;
 
-pub(crate) struct CastCase {
-    pub(crate) name: &'static str,
-    pub(crate) src: ElementKind,
-    pub(crate) dst: ElementKind,
-    pub(crate) compute: ElementKind,
-    pub(crate) round: RoundMode,
-    pub(crate) sat: Saturation,
+pub struct CastCase {
+    pub name: &'static str,
+    pub src: ElementKind,
+    pub dst: ElementKind,
+    pub compute: ElementKind,
+    pub round: RoundMode,
+    pub sat: Saturation,
     /// Per-element bit patterns of the input, cycled over the threads.
-    pub(crate) input: Vec<u64>,
+    pub input: Vec<u64>,
     /// The result for each input element, as bit patterns of `dst`.
-    pub(crate) want: Vec<u64>,
+    pub want: Vec<u64>,
     /// What a wrong lowering would give for each input element.
-    pub(crate) mutant: Vec<u64>,
+    pub mutant: Vec<u64>,
 }
 
 fn bits32(v: f32) -> u64 {
@@ -120,7 +120,7 @@ fn wrap_i32(x: f64) -> i32 {
     (x.trunc() as i64) as i32
 }
 
-pub(crate) fn cases() -> Vec<CastCase> {
+pub fn cases() -> Vec<CastCase> {
     let ne = RoundMode::NearestEven;
     let mut v = Vec::new();
     v.push(CastCase {
@@ -458,7 +458,7 @@ fn width_bytes(t: ElementKind) -> usize {
 }
 
 /// `x` as IEEE half bits, one rounding (nearest even, or toward zero for the mutant).
-pub(crate) fn f16_round(x: f64, toward_zero: bool) -> u16 {
+pub fn f16_round(x: f64, toward_zero: bool) -> u16 {
     let sign = if x.is_sign_negative() { 0x8000u16 } else { 0 };
     if x.is_nan() {
         return 0x7e00;
@@ -494,7 +494,7 @@ pub(crate) fn f16_round(x: f64, toward_zero: bool) -> u16 {
 }
 
 /// The exact `f32` value of half bits `b`.
-pub(crate) fn f16_decode(b: u16) -> f32 {
+pub fn f16_decode(b: u16) -> f32 {
     let sign = if b & 0x8000 != 0 { -1.0f32 } else { 1.0 };
     let (e, m) = (i32::from((b >> 10) & 0x1f), f32::from(b & 0x3ff));
     match e {
@@ -507,7 +507,7 @@ pub(crate) fn f16_decode(b: u16) -> f32 {
 
 /// The words of `elems` (cycled to `THREADS` elements, little-endian, `width_bytes` each), padded
 /// with zero words to `min_words`.
-pub(crate) fn words(t: ElementKind, elems: &[u64], min_words: usize) -> Vec<u32> {
+pub fn words(t: ElementKind, elems: &[u64], min_words: usize) -> Vec<u32> {
     let w = width_bytes(t);
     let mut bytes = Vec::new();
     for k in 0..THREADS {
@@ -527,7 +527,7 @@ fn at(buffer: u32) -> Place {
     }
 }
 
-pub(crate) fn kernel(c: &CastCase) -> KernelFn {
+pub fn kernel(c: &CastCase) -> KernelFn {
     let value = E::Cast(
         Box::new(E::Local(0)),
         CastSpec {
@@ -561,7 +561,7 @@ pub(crate) fn kernel(c: &CastCase) -> KernelFn {
 
 /// Whether two result word sequences agree element by element: integers exactly, floats bit-exactly
 /// except that every NaN equals every NaN.
-pub(crate) fn agree(t: ElementKind, got: &[u32], want: &[u32]) -> Result<(), String> {
+pub fn agree(t: ElementKind, got: &[u32], want: &[u32]) -> Result<(), String> {
     let w = width_bytes(t);
     let bytes = |x: &[u32]| x.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<u8>>();
     let (g, h) = (bytes(got), bytes(want));

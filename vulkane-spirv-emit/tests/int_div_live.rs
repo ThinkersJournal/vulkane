@@ -15,12 +15,8 @@
 //!
 //! Without a device the test follows `VULKANE_REQUIRE_DEVICE` like every other live test.
 
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
-mod common;
-#[path = "support/gpu.rs"]
-#[allow(dead_code)]
-mod gpu;
+use vulkane_test_support::common;
+use vulkane_test_support::gpu;
 
 use unpopped::ir::{BinaryOp, Expr, OpDef, input, konst_int};
 use unpopped::try_generate;

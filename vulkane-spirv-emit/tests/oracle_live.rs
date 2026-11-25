@@ -19,17 +19,11 @@
 //! the same cases through `fishstringer-slang-emit` (compiled by `slangc`) and this emitter, both on the
 //! device. The cases, tolerances and domains live in `support/cases.rs`.
 
-#[path = "support/cases.rs"]
-mod cases;
-#[path = "support/cc.rs"]
-mod cc;
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
-mod common;
-#[path = "support/gpu.rs"]
-mod gpu;
-#[path = "support/host_c.rs"]
-mod host_c;
+use vulkane_test_support::cases;
+use vulkane_test_support::cc;
+use vulkane_test_support::common;
+use vulkane_test_support::gpu;
+use vulkane_test_support::host_c;
 
 use std::process::Command;
 

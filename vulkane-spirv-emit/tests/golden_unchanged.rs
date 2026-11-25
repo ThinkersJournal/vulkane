@@ -4,24 +4,12 @@
 //! in `tests/golden/` were written by the emitter BEFORE the 64-bit change;
 //! `SPIRV_GOLDEN_WRITE=1` rewrites them (only for a deliberate change).
 
-#[path = "support/atomic_kernel.rs"]
-#[allow(dead_code)]
-mod atomic_kernel;
-#[path = "support/flow_kernel.rs"]
-#[allow(dead_code)]
-mod flow_kernel;
-#[path = "support/grid_kernel.rs"]
-#[allow(dead_code)]
-mod grid_kernel;
-#[path = "support/private_kernel.rs"]
-#[allow(dead_code)]
-mod private_kernel;
-#[path = "support/reverse_kernel.rs"]
-#[allow(dead_code)]
-mod reverse_kernel;
-#[path = "support/subgroup_kernel.rs"]
-#[allow(dead_code)]
-mod subgroup_kernel;
+use vulkane_test_support::atomic_kernel;
+use vulkane_test_support::flow_kernel;
+use vulkane_test_support::grid_kernel;
+use vulkane_test_support::private_kernel;
+use vulkane_test_support::reverse_kernel;
+use vulkane_test_support::subgroup_kernel;
 
 use unpopped::backend::Backend;
 use unpopped::exec::MemorySpace;

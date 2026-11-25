@@ -23,6 +23,8 @@ vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.30" }
 [dev-dependencies]
 # The published decline fixtures (ROADMAP 9h): one checker-valid kernel or module per `Stmt` variant.
 unpopped = { version = "~0.60.1", features = ["fixtures"] }
+# Shared test helpers (GPU lock witness, kernels, oracles): ROADMAP row 8n, in place of `#[path]` includes.
+vulkane-test-support = { path = "../vulkane-test-support" }
 # Reflection of the emitted module: entry point, workgroup size, bindings.
 vulkane-spirv-parse = { path = "../vulkane-spirv-parse" }
 # The live-device shift test opens a device through the safe wrapper (and its shared `tests/common`).

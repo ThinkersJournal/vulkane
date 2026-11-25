@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 use unpopped::backend::GeneratedKernel;
 
 /// `glslangValidator` to SPIR-V words; `None` when it is absent (a failure under `VULKANE_REQUIRE_GLSLANG`).
-pub(crate) fn glslang_words(k: &GeneratedKernel) -> Option<Vec<u32>> {
+pub fn glslang_words(k: &GeneratedKernel) -> Option<Vec<u32>> {
     let dir = tempfile::tempdir().unwrap();
     let (src, spv) = (dir.path().join("k.comp"), dir.path().join("k.spv"));
     std::fs::write(&src, &k.source).unwrap();
@@ -43,7 +43,7 @@ pub(crate) fn glslang_words(k: &GeneratedKernel) -> Option<Vec<u32>> {
 }
 
 /// `spirv-val --target-env vulkan1.1` over `words`; `None` when it is absent and not required.
-pub(crate) fn validates(words: &[u32]) -> Option<(bool, String)> {
+pub fn validates(words: &[u32]) -> Option<(bool, String)> {
     let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
     let child = Command::new("spirv-val")
         .args(["--target-env", "vulkan1.1", "-"])

@@ -19,7 +19,7 @@
 //! **silently** — the highest concentration in the suite — so on a machine
 //! without a device the file reported seven passes having asserted nothing.
 
-mod common;
+use vulkane_test_support::common;
 
 use vulkane::safe::{
     Buffer, BufferCreateInfo, BufferUsage, ComputePipelineOptions, DescriptorBufferBinding,

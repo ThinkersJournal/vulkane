@@ -7,23 +7,14 @@
 //! Without a device, `glslangValidator` or `spirv-val` the tests follow `VULKANE_REQUIRE_DEVICE`,
 //! `VULKANE_REQUIRE_GLSLANG` and `VULKANE_REQUIRE_SPIRV_VAL` rather than passing silently.
 
-#[path = "../../vulkane-spirv-emit/tests/support/atomic_kernel.rs"]
-mod atomic_kernel;
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
-mod common;
-#[path = "../../vulkane-spirv-emit/tests/support/flow_kernel.rs"]
-mod flow_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/gpu.rs"]
-mod gpu;
-#[path = "../../vulkane-spirv-emit/tests/support/grid_kernel.rs"]
-mod grid_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/private_kernel.rs"]
-mod private_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/reverse_kernel.rs"]
-mod reverse_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/subgroup_kernel.rs"]
-mod subgroup_kernel;
+use vulkane_test_support::atomic_kernel;
+use vulkane_test_support::common;
+use vulkane_test_support::flow_kernel;
+use vulkane_test_support::gpu;
+use vulkane_test_support::grid_kernel;
+use vulkane_test_support::private_kernel;
+use vulkane_test_support::reverse_kernel;
+use vulkane_test_support::subgroup_kernel;
 
 use unpopped::backend::{Backend, GeneratedKernel, LowerError};
 use unpopped::exec::MemorySpace;

@@ -10,13 +10,8 @@ use unpopped_vocab::ElementKind::{F16, F32, F64, I64};
 use crate::tests::assert_valid;
 use crate::{SpirV, required_features};
 
-#[path = "../tests/support/cast_kernel.rs"]
-#[allow(
-    dead_code,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod cast_kernel;
 use cast_kernel::{cases, kernel};
+use vulkane_test_support::cast_kernel;
 
 #[test]
 fn every_cast_validates_and_declares_rte_only_when_it_rounds() {

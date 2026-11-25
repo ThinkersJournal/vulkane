@@ -658,7 +658,7 @@ mod lock_witness_tests {
 /// without documenting it fails here.
 #[test]
 fn the_doc_names_every_value_the_predicate_accepts() {
-    let src = include_str!("mod.rs");
+    let src = include_str!("common.rs");
 
     // The words the PREDICATE accepts, taken from its match arms rather than
     // from a list kept here -- a second list would drift exactly as the prose
