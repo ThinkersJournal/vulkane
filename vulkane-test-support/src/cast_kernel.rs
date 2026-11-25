@@ -12,8 +12,10 @@ use unpopped::ir::{CastSpec, RoundMode, Saturation, ScalarExpr as E};
 use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt};
 use unpopped_vocab::ElementKind::{self, F16, F32, F64, I32, U32};
 
+/// Threads launched; the cases cycle their inputs over them.
 pub const THREADS: usize = 256;
 
+/// One conversion under test: its types, rounding, saturation and inputs.
 pub struct CastCase {
     pub name: &'static str,
     pub src: ElementKind,
@@ -120,6 +122,7 @@ fn wrap_i32(x: f64) -> i32 {
     (x.trunc() as i64) as i32
 }
 
+/// Every conversion case the device tests run.
 pub fn cases() -> Vec<CastCase> {
     let ne = RoundMode::NearestEven;
     let mut v = Vec::new();
@@ -527,6 +530,7 @@ fn at(buffer: u32) -> Place {
     }
 }
 
+/// The kernel that converts the case's input buffer to its destination type.
 pub fn kernel(c: &CastCase) -> KernelFn {
     let value = E::Cast(
         Box::new(E::Local(0)),

@@ -33,7 +33,7 @@ fn reverse(with_barrier: bool) -> GeneratedKernel {
     lower(&reverse_kernel::reverse(
         WORKGROUP_SIZE,
         with_barrier,
-        false,
+        reverse_kernel::SharedLen::Static,
     ))
 }
 
@@ -215,7 +215,11 @@ fn a_block_reversed_through_a_specialization_sized_array_is_exact_on_a_device() 
     let Some(gpu) = gpu::Gpu::open("glsl_kernel_dynamic") else {
         return;
     };
-    let k = lower(&reverse_kernel::reverse(WORKGROUP_SIZE, true, true));
+    let k = lower(&reverse_kernel::reverse(
+        WORKGROUP_SIZE,
+        true,
+        reverse_kernel::SharedLen::Spec,
+    ));
     assert!(k.source.contains("layout(constant_id = 2)"), "{}", k.source);
     let Some(words) = glslang_words(&k) else {
         return;
@@ -263,16 +267,18 @@ fn a_constant_allocation_is_a_typed_decline() {
 fn what_the_walker_does_not_lower_is_a_typed_decline_naming_it() {
     use unpopped::exec::{Extent, Scope};
     use unpopped::kernel::{BarrierKind, Stmt};
-    let mut f = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut f = reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     f.compute = unpopped_vocab::ElementKind::Bf16;
     declined(&f, "integer kernels only");
 
     // A dynamic extent from a local that no scalar parameter declares: `check_kernel` refuses it.
-    let mut dynamic = reverse_kernel::reverse(WORKGROUP_SIZE, true, true);
+    let mut dynamic =
+        reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Spec);
     dynamic.allocs[0].extent = Extent::Param(1);
     declined(&dynamic, "AllocExtent");
 
-    let mut device = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut device =
+        reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     device.body.0.insert(
         3,
         Stmt::Barrier {
@@ -282,7 +288,7 @@ fn what_the_walker_does_not_lower_is_a_typed_decline_naming_it() {
     );
     declined(&device, "Barrier");
 
-    let mut grid = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut grid = reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     grid.body.0.push(Stmt::GridDepWait);
     declined(&grid, "GridDepWait");
 }

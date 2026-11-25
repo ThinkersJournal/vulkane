@@ -149,7 +149,11 @@ fn the_narrow_extensions_are_declared_only_for_the_widths_used() {
     );
     assert!(!g16.source.contains("8bit"), "{}", g16.source);
     let plain = Glsl
-        .lower_kernel(&reverse_kernel::reverse(WORKGROUP_SIZE, true, false))
+        .lower_kernel(&reverse_kernel::reverse(
+            WORKGROUP_SIZE,
+            true,
+            reverse_kernel::SharedLen::Static,
+        ))
         .expect("lowers");
     assert!(!plain.source.contains("_storage"), "{}", plain.source);
 }

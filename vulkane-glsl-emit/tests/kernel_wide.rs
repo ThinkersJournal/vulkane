@@ -98,7 +98,11 @@ fn the_wide_source_spells_64_bit_types_masks_and_keeps_32_bit_kernels_unchanged(
     }
     // Control: a 32-bit kernel declares no 64-bit extension and masks at 31.
     let narrow = Glsl
-        .lower_kernel(&reverse_kernel::reverse(64, true, false))
+        .lower_kernel(&reverse_kernel::reverse(
+            64,
+            true,
+            reverse_kernel::SharedLen::Static,
+        ))
         .expect("a 32-bit kernel lowers");
     assert!(!narrow.source.contains("int64"), "{}", narrow.source);
 }

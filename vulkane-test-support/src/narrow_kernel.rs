@@ -14,6 +14,7 @@ use unpopped::ir::{CastSpec, RoundMode, Saturation, ScalarExpr as E};
 use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt};
 use unpopped_vocab::ElementKind;
 
+/// Threads launched.
 pub const THREADS: u32 = 256;
 
 /// The compute dtype that matches `elem`'s signedness.
@@ -78,12 +79,14 @@ fn kernel(
     k
 }
 
+/// The kernel widening an 8/16-bit `elem` buffer to 32 bits.
 pub fn widen_kernel(elem: ElementKind) -> KernelFn {
     kernel("widen", elem, compute_of(elem), |compute| {
         cast(E::Local(1), compute)
     })
 }
 
+/// The kernel narrowing 32-bit values into an 8/16-bit `elem` buffer, wrapping.
 pub fn wrap_kernel(elem: ElementKind) -> KernelFn {
     kernel("wrap", elem, elem, |compute| {
         cast(
@@ -131,6 +134,7 @@ pub fn input_words(elem: ElementKind, words: usize) -> Vec<u32> {
         .collect()
 }
 
+/// The byte width of `elem`.
 pub fn width(elem: ElementKind) -> usize {
     match elem {
         ElementKind::I8 | ElementKind::U8 => 1,

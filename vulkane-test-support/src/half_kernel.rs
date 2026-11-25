@@ -9,6 +9,7 @@
 use crate::cast_kernel::{f16_decode, f16_round};
 use crate::float_kernel::Case;
 
+/// Threads launched.
 pub const THREADS: usize = 256;
 
 /// `(a, b)` as `f64`; each is rounded to half for the input buffers (all are exact halves or NaN).

@@ -38,7 +38,7 @@ fn a_64_bit_kernel_declares_int64_and_a_64_bit_type_and_validates() {
 /// `tests/golden_unchanged.rs` pin byte for byte).
 #[test]
 fn a_32_bit_kernel_declares_no_int64() {
-    let k = reverse_kernel::reverse(64, true, false);
+    let k = reverse_kernel::reverse(64, true, reverse_kernel::SharedLen::Static);
     let g = SpirV.lower_kernel(&k).expect("lowers");
     assert!(!g.source.contains("Int64"), "{}", g.source);
     assert!(!g.source.contains("OpTypeInt 64"), "{}", g.source);
@@ -77,7 +77,11 @@ fn kernels_at_an_unlowered_dtype_stay_a_typed_decline() {
 #[test]
 fn a_32_bit_kernel_requires_no_int64_feature() {
     let g = SpirV
-        .lower_kernel(&reverse_kernel::reverse(64, true, false))
+        .lower_kernel(&reverse_kernel::reverse(
+            64,
+            true,
+            reverse_kernel::SharedLen::Static,
+        ))
         .expect("lowers");
     let need = crate::required_features(g.words().expect("words")).expect("a module");
     assert_eq!(need, crate::RequiredFeatures::default());

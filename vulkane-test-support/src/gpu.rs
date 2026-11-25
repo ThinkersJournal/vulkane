@@ -39,7 +39,6 @@ fn host_buffer(
     (buffer, memory)
 }
 
-#[allow(dead_code)]
 fn write_bytes(mem: &mut DeviceMemory, bytes: &[u8]) {
     let mut m = mem.map().unwrap();
     m.as_slice_mut()[..bytes.len()].copy_from_slice(bytes);
@@ -62,13 +61,11 @@ pub struct Gpu {
 
 impl Gpu {
     /// Instance, first compute device and queue; `None` once the skip is declared.
-    #[allow(dead_code)] // test binaries that need features use `open_with`
     pub fn open(tag: &str) -> Option<Gpu> {
         Self::open_with(tag, None)
     }
 
     /// [`Gpu::open`] on a device created with `features` (and the label a refusal reports).
-    #[allow(dead_code)]
     pub fn open_with(tag: &str, features: Option<(&DeviceFeatures, &str)>) -> Option<Gpu> {
         let (inst, devices) = match common::instance_and_devices(tag, ApiVersion::V1_1) {
             Ok(x) => x,
@@ -102,22 +99,16 @@ impl Gpu {
     }
 
     /// The device's float-controls properties (`None` when it cannot say), for a skip line.
-    #[allow(
-        dead_code,
-        reason = "shared test module: each test binary compiles it whole but uses part of it"
-    )]
     pub fn float_controls(&self) -> Option<vulkane::safe::FloatControlsProperties> {
         self.physical.float_controls_properties()
     }
 
     /// The device's `shaderInt64` readout (`VkPhysicalDeviceFeatures`), for a skip line.
-    #[allow(dead_code)]
     pub fn shader_int64(&self) -> bool {
         self.physical.supported_features().shaderInt64 != 0
     }
 
     /// The subgroup size the device runs compute at (`VkPhysicalDeviceSubgroupProperties`).
-    #[allow(dead_code)]
     pub fn subgroup_size(&self) -> u32 {
         self.physical
             .subgroup_properties()
@@ -197,13 +188,11 @@ impl Gpu {
 
     /// Run `words` (entry point `name`) over `inputs` (equal length, 32-bit cells) and return the
     /// output cells, one per input element.
-    #[allow(dead_code)] // each test binary includes this file and uses one of `run`, `run_spec`
     pub fn run(&self, name: &str, words: &[u32], inputs: &[&[u32]]) -> Vec<u32> {
         self.run_spec(name, words, inputs, None)
     }
 
     /// [`Gpu::run`] with specialization constants baked into the pipeline.
-    #[allow(dead_code)]
     pub fn run_spec(
         &self,
         name: &str,
@@ -216,7 +205,6 @@ impl Gpu {
 
     /// [`Gpu::run`] with a uniform buffer holding `params` bound after the output (the Slang and
     /// HLSL kernel path's params block: strides and bases of the buffer views).
-    #[allow(dead_code)]
     pub fn run_params(
         &self,
         name: &str,
@@ -288,13 +276,11 @@ impl Gpu {
 
     /// Run `words` (entry point `name`) as a `groups`-shaped dispatch over one output buffer of
     /// `cells` 32-bit cells (binding 0, pre-filled with [`SENTINEL`]) and return the cells.
-    #[allow(dead_code)]
     pub fn run_grid(&self, name: &str, words: &[u32], cells: usize, groups: [u32; 3]) -> Vec<u32> {
         self.run_grid_params(name, words, cells, groups, None)
     }
 
     /// [`Gpu::run_grid`] with a uniform buffer holding `params` bound after the output.
-    #[allow(dead_code)]
     pub fn run_grid_params(
         &self,
         name: &str,

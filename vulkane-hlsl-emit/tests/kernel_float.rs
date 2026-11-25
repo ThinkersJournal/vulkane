@@ -85,8 +85,12 @@ fn a_float_kernel_is_a_typed_decline_naming_the_missing_float_control() {
         }
     }
     // Control: an integer kernel still lowers, so the decline is the float type.
-    Hlsl.lower_kernel(&reverse_kernel::reverse(WORKGROUP_SIZE, true, false))
-        .expect("an integer kernel lowers");
+    Hlsl.lower_kernel(&reverse_kernel::reverse(
+        WORKGROUP_SIZE,
+        true,
+        reverse_kernel::SharedLen::Static,
+    ))
+    .expect("an integer kernel lowers");
 }
 
 const PROBE: &str = r#"

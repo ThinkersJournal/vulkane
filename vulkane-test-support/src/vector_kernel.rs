@@ -21,8 +21,10 @@ use unpopped::ir::{BinaryOp, ScalarExpr as E};
 use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt};
 use unpopped_vocab::ElementKind::F32;
 
+/// Threads launched.
 pub const THREADS: usize = 256;
 
+/// The `(a, b)` float input pairs, cycled over the threads.
 pub const PAIRS: [(f32, f32); 14] = [
     (0.1, 3.0),
     (1e-30, 1e-10),
@@ -40,10 +42,6 @@ pub const PAIRS: [(f32, f32); 14] = [
     (2.0, 1e-40),
 ];
 
-fn b(e: E) -> Box<E> {
-    Box::new(e)
-}
-
 fn at(buffer: u32) -> Place {
     Place::Logical {
         buffer,
@@ -52,7 +50,7 @@ fn at(buffer: u32) -> Place {
 }
 
 fn lane(local: u32, k: u8) -> E {
-    E::Extract(b(E::Local(local)), k)
+    E::Extract(Box::new(E::Local(local)), k)
 }
 
 /// The kernel for `lanes` (2 or 4) storing lane `store` of the swapped vector.
@@ -62,7 +60,10 @@ pub fn vector_kernel(lanes: u8, store: u8) -> KernelFn {
     let (init, w, order): (Vec<E>, E, Vec<u8>) = if lanes == 2 {
         (
             vec![x, y],
-            E::Add(b(E::Mul(b(E::Local(2)), b(E::Local(2)))), b(E::Local(2))),
+            E::Add(
+                Box::new(E::Mul(Box::new(E::Local(2)), Box::new(E::Local(2)))),
+                Box::new(E::Local(2)),
+            ),
             vec![1, 0],
         )
     } else {
@@ -70,13 +71,13 @@ pub fn vector_kernel(lanes: u8, store: u8) -> KernelFn {
             vec![
                 x.clone(),
                 y.clone(),
-                E::Add(b(x.clone()), b(y.clone())),
-                E::Sub(b(x), b(y)),
+                E::Add(Box::new(x.clone()), Box::new(y.clone())),
+                E::Sub(Box::new(x), Box::new(y)),
             ],
             E::Binary(
                 BinaryOp::Max,
-                b(E::Mul(b(E::Local(2)), b(E::Local(2)))),
-                b(E::Local(2)),
+                Box::new(E::Mul(Box::new(E::Local(2)), Box::new(E::Local(2)))),
+                Box::new(E::Local(2)),
             ),
             vec![1, 0, 3, 2],
         )

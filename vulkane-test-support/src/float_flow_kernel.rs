@@ -21,8 +21,11 @@ use unpopped::ir::{BinaryOp, ScalarExpr as E};
 use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt, Unroll};
 use unpopped_vocab::ElementKind::{self, F32, I32, U32};
 
+/// Threads launched.
 pub const THREADS: usize = 256;
+/// The float weights the loop kernel multiplies by.
 pub const WEIGHTS: [f32; 4] = [1.5, -2.0, 0.25, 3.0];
+/// The float inputs the loop kernel reads, one per thread (cycled).
 pub const XS: [f32; 24] = [
     0.1,
     -0.1,
@@ -51,10 +54,6 @@ pub const XS: [f32; 24] = [
     1.999_999_9,
 ];
 
-fn b(e: E) -> Box<E> {
-    Box::new(e)
-}
-
 fn at(buffer: u32, index: E) -> Place {
     Place::Logical {
         buffer,
@@ -63,7 +62,7 @@ fn at(buffer: u32, index: E) -> Place {
 }
 
 fn cmp_gt(l: E, r: E) -> E {
-    E::Binary(BinaryOp::CmpGt, b(l), b(r))
+    E::Binary(BinaryOp::CmpGt, Box::new(l), Box::new(r))
 }
 
 /// The kernel: `counter` is `U32` (up from 0) or `I32` (down from 3, step -1).
@@ -75,7 +74,7 @@ pub fn float_flow_kernel(counter: ElementKind) -> KernelFn {
     } else {
         (ci(0), ci(4), ci(1))
     };
-    let prod = || E::Mul(b(y.clone()), b(w.clone()));
+    let prod = || E::Mul(Box::new(y.clone()), Box::new(w.clone()));
     let body = vec![
         Stmt::Load {
             local: 0,
@@ -100,11 +99,11 @@ pub fn float_flow_kernel(counter: ElementKind) -> KernelFn {
                     cond: cmp_gt(prod(), E::Const(0.0)),
                     then: Block(vec![Stmt::Assign {
                         local: 1,
-                        value: E::Add(b(acc.clone()), b(prod())),
+                        value: E::Add(Box::new(acc.clone()), Box::new(prod())),
                     }]),
                     els: Block(vec![Stmt::Assign {
                         local: 1,
-                        value: E::Sub(b(acc.clone()), b(w.clone())),
+                        value: E::Sub(Box::new(acc.clone()), Box::new(w.clone())),
                     }]),
                 },
                 Stmt::If {
@@ -118,7 +117,7 @@ pub fn float_flow_kernel(counter: ElementKind) -> KernelFn {
             cond: cmp_gt(acc.clone(), E::Const(8.0)),
             body: Block(vec![Stmt::Assign {
                 local: 1,
-                value: E::Mul(b(acc.clone()), b(E::Const(0.5))),
+                value: E::Mul(Box::new(acc.clone()), Box::new(E::Const(0.5))),
             }]),
         },
         Stmt::Store {

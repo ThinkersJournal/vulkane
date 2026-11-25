@@ -20,10 +20,13 @@ use unpopped::kernel::{
 };
 use unpopped_vocab::ElementKind::U32;
 
+/// Threads per workgroup.
 pub const BLOCK: u32 = 64;
+/// Workgroups launched.
 pub const BLOCKS: u32 = 16;
-#[allow(dead_code)] // the unit tests do not use it; the live test does
+/// Threads launched in total.
 pub const THREADS: u32 = BLOCK * BLOCKS;
+/// The value the harness fill leaves in a cell a thread never wrote.
 pub const SENTINEL: u32 = 0xAAAA_AAAA;
 
 fn c(v: i64) -> E {
