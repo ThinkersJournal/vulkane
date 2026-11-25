@@ -691,9 +691,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      # The per-file SPDX/licence gate is now CodeRipper's SUP-016 (licence-tools#6,
-      # 159eb406), configured by `[sup016]` in `.coderipper.toml`. `.github/spdx_gate.py`
-      # stays on disk (the fleet compares its copies) but this job no longer runs it.
+      # The per-file SPDX/licence gate gains CodeRipper's SUP-016 (licence-tools#6,
+      # 159eb406), configured by `[sup016]` in `.coderipper.toml`. The OLD gate stays in
+      # this job ALONGSIDE it, deliberately: `spdx_gate.py` also keeps an extension census
+      # (it flags a new tracked source extension) that SUP-016's static list lacks, and the
+      # hosted-runner install of the new gate is unverified. Drop the old steps only after
+      # the new step's log has been read on a hosted run (pm-kernels 2026-11-25).
+      - name: Self-test the SPDX gate
+        run: python3 .github/spdx_gate.py --self-test
+      - name: Every tracked source file declares the workspace licence
+        run: python3 .github/spdx_gate.py
       - name: Install coderipper 0.48.1
         run: cargo install coderipper --version 0.48.1 --locked
       - name: Every source file declares the licence (SUP-016)
