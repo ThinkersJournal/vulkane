@@ -57,7 +57,8 @@ use unpopped::ir::ScalarExpr;
 use unpopped::kernel::{BarrierKind, KernelFn, MemoryOrder, Place, Stmt};
 use unpopped::types::Ty;
 
-use crate::ops::{Em, Family, lo};
+use crate::family::Family;
+use crate::ops::{Em, lo};
 use crate::{KernelSeams, lower_body};
 use check::check_scope;
 use declare::{Module, declare};
