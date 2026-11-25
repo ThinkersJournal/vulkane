@@ -160,8 +160,6 @@ fn what_is_not_spelled_is_declined_by_name() {
     assert!(sqrt.contains("msl"), "{sqrt}");
     let wide = decline(&wide_kernel::wide_kernel(ElementKind::I64));
     assert!(wide.contains("msl"), "{wide}");
-    let atomic = decline(&atomic_kernel::atomic_kernel(false));
-    assert!(atomic.contains("msl"), "{atomic}");
     let subgroup = decline(&subgroup_kernel::subgroup_kernel(1, 128));
     assert!(subgroup.contains("LaneId"), "{subgroup}");
     let scalar = decline(&reverse_kernel::reverse(
@@ -202,6 +200,49 @@ fn float_max_propagates_nan_and_floor_is_spelled() {
         float_kernel::Case::Floor,
     ));
     assert!(floor.contains("floor("), "{floor}");
+}
+
+#[test]
+fn atomics_use_atomic_types_relaxed_explicit_calls_and_a_retried_weak_exchange() {
+    let src = text(&atomic_kernel::atomic_kernel(false));
+    assert!(src.contains("device atomic_uint* b0"), "{src}");
+    assert!(
+        src.contains("atomic_fetch_add_explicit(&b0[0u], 1u, memory_order_relaxed)"),
+        "{src}"
+    );
+    assert!(src.contains("atomic_fetch_min_explicit(&b0[1u]"), "{src}");
+    // The weak exchange is retried while the value seen still equals `expected`.
+    assert!(
+        src.contains("atomic_compare_exchange_weak_explicit(&b0[2u], &cas_e, cas_d, memory_order_relaxed, memory_order_relaxed) && cas_e == cas_x"),
+        "{src}"
+    );
+    assert!(!src.contains("atomicAdd"), "{src}");
+}
+
+#[test]
+fn the_racy_control_reads_and_writes_the_atomic_cell_through_atomic_load_and_store() {
+    let src = text(&atomic_kernel::atomic_kernel(true));
+    assert!(src.contains("atomic_load_explicit(&b0[0u]"), "{src}");
+    assert!(src.contains("atomic_store_explicit(&b0[0u]"), "{src}");
+}
+
+#[test]
+fn an_atomic_at_subgroup_scope_or_with_a_stronger_order_is_declined() {
+    use unpopped::kernel::MemoryOrder;
+    let mut k = atomic_kernel::atomic_kernel(false);
+    for st in &mut k.body.0 {
+        if let Stmt::AtomicRmw { scope, .. } = st {
+            *scope = Scope::Subgroup;
+        }
+    }
+    assert!(decline(&k).contains("Subgroup"));
+    let mut k = atomic_kernel::atomic_kernel(false);
+    for st in &mut k.body.0 {
+        if let Stmt::AtomicRmw { order, .. } = st {
+            *order = MemoryOrder::SeqCst;
+        }
+    }
+    assert!(decline(&k).contains("msl"));
 }
 
 #[test]

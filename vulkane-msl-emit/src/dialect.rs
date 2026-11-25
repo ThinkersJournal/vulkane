@@ -5,7 +5,7 @@ use std::fmt::Write;
 
 use unpopped::exec::{ExecId, Scope};
 use unpopped::ir::BinaryOp;
-use unpopped::kernel::{BufferRole, MemoryOrder};
+use unpopped::kernel::{AtomicOp, BufferRole, MemoryOrder};
 use vulkane_kernel_text::{BIT_OPS, COMPARISONS, Dialect, Layout, operator};
 
 /// The MSL dialect of [`vulkane_kernel_text::lower_kernel`].
@@ -14,6 +14,16 @@ pub struct Msl;
 
 fn ty(signed: bool) -> &'static str {
     if signed { "int" } else { "uint" }
+}
+
+/// The Metal type of a buffer or array element: `atomic_int`/`atomic_uint` when the kernel applies
+/// an atomic to it (Metal atomics act on atomic types in `device` or `threadgroup` memory only).
+fn elem_ty(signed: bool, atomic: bool) -> &'static str {
+    match (atomic, signed) {
+        (false, s) => ty(s),
+        (true, true) => "atomic_int",
+        (true, false) => "atomic_uint",
+    }
 }
 
 /// `x`, `y` or `z`.
@@ -63,15 +73,23 @@ impl Dialect for Msl {
             };
             let _ = writeln!(
                 s,
-                "    device {access}{t}* {} [[buffer({})]],",
-                b.name, b.binding
+                "    device {access}{}* {} [[buffer({})]],",
+                elem_ty(layout.signed, b.atomic),
+                b.name,
+                b.binding
             );
         }
         s.push_str("    uint3 tid [[thread_position_in_threadgroup]],\n");
         s.push_str("    uint3 gid [[threadgroup_position_in_grid]])\n{\n");
         for a in &layout.shared {
             let class = if a.private { "" } else { "threadgroup " };
-            let _ = writeln!(s, "    {class}{t} {}[{}];", a.name, a.len);
+            let _ = writeln!(
+                s,
+                "    {class}{} {}[{}];",
+                elem_ty(layout.signed, a.atomic && !a.private),
+                a.name,
+                a.len
+            );
         }
         for i in 0..layout.locals {
             let _ = writeln!(s, "    {t} l{i} = {};", self.lit(0, layout.signed));
@@ -140,5 +158,67 @@ impl Dialect for Msl {
 
     fn fence(&self, scope: Scope, order: MemoryOrder) -> Option<String> {
         fence(scope, order)
+    }
+
+    fn typed_atomics(&self) -> bool {
+        true
+    }
+
+    /// Metal atomics act on `device` and `threadgroup` memory; a subgroup or cluster scope has no form.
+    fn atomic_scope_ok(&self, scope: Scope) -> bool {
+        matches!(scope, Scope::Block | Scope::Device)
+    }
+
+    fn atomic_load(&self, elem: &str) -> Option<String> {
+        Some(format!(
+            "atomic_load_explicit(&{elem}, memory_order_relaxed)"
+        ))
+    }
+
+    fn atomic_store(&self, elem: &str, value: &str) -> Option<String> {
+        Some(format!(
+            "atomic_store_explicit(&{elem}, {value}, memory_order_relaxed);"
+        ))
+    }
+
+    fn atomic_rmw(&self, op: AtomicOp, elem: &str, value: &str) -> Option<String> {
+        let f = match op {
+            AtomicOp::Add => "atomic_fetch_add_explicit",
+            AtomicOp::Min => "atomic_fetch_min_explicit",
+            AtomicOp::Max => "atomic_fetch_max_explicit",
+            AtomicOp::And => "atomic_fetch_and_explicit",
+            AtomicOp::Or => "atomic_fetch_or_explicit",
+            AtomicOp::Xor => "atomic_fetch_xor_explicit",
+            AtomicOp::Exchange => "atomic_exchange_explicit",
+            _ => return None,
+        };
+        Some(format!("{f}(&{elem}, {value}, memory_order_relaxed)"))
+    }
+
+    /// Metal has only `atomic_compare_exchange_weak_explicit`, which may fail with the element equal to
+    /// `expected` (spuriously) and then writes the value it saw to `expected`. The IR's compare-exchange
+    /// (the old value tells whether it swapped) cannot express a spurious failure, so the exchange is
+    /// retried while the value seen still equals the original `expected`.
+    fn atomic_cas_lines(
+        &self,
+        elem: &str,
+        expected: &str,
+        desired: &str,
+        dest: Option<&str>,
+    ) -> Option<Vec<String>> {
+        let mut lines = vec![
+            "{".to_string(),
+            format!("    const auto cas_x = {expected};"),
+            "    auto cas_e = cas_x;".to_string(),
+            format!("    const auto cas_d = {desired};"),
+            format!(
+                "    while (!atomic_compare_exchange_weak_explicit(&{elem}, &cas_e, cas_d, memory_order_relaxed, memory_order_relaxed) && cas_e == cas_x) {{}}"
+            ),
+        ];
+        if let Some(l) = dest {
+            lines.push(format!("    {l} = cas_e;"));
+        }
+        lines.push("}".to_string());
+        Some(lines)
     }
 }
