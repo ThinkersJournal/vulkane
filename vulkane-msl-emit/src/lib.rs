@@ -29,10 +29,16 @@
 //! `const` temporary, the exact unary ops only (`rint` for round-half-even), NaN-propagating max/min, and
 //! guarded float-to-integer conversions. Text pinned, **not compiled** (no Metal compiler in CI).
 //!
+//! Atomics (`AtomicRmw` Add/Min/Max/And/Or/Xor/Exchange, `AtomicCas`) on `I32`/`U32` buffers and `threadgroup` arrays: the
+//! target is declared `atomic_int`/`atomic_uint`, every access is `atomic_*_explicit` with `memory_order_relaxed`, and the
+//! compare-exchange (Metal has only the weak form, whose spurious failure the IR cannot express) is retried while the value
+//! seen still equals `expected`. Scope Block and Device only; a non-`Relaxed` order is a decline (Metal 4.1 adds
+//! acquire/release, not spelled yet). Text pinned, **not compiled**.
+//!
 //! ## Declined by name
 //!
 //! `F64` (Metal has no `double`), `Div`, `Sqrt` and the transcendentals (looser bound than the contract tier), other
-//! 64-bit, 8/16-bit integer and vector kernels, atomics, scalar parameters, subgroup and
+//! 64-bit, 8/16-bit integer and vector kernels, float atomics, a subgroup-scope atomic, scalar parameters, subgroup and
 //! `BlockDim`/`GridDim` ids, and a `Barrier` or `Fence` at a scope other than block (and device for a
 //! fence): each a typed `UnsupportedKernel` from the shared walker naming it. The twelve NVIDIA-only
 //! statements of board 434 C are refused by name first. The plan path (`Backend::lower`) is not
