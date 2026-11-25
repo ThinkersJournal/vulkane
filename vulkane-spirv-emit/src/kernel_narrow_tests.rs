@@ -10,9 +10,7 @@ use unpopped_vocab::{ArchSku, TargetId};
 use crate::tests::assert_valid;
 use crate::{SpirV, required_features};
 
-#[path = "../tests/support/narrow_kernel.rs"]
-#[allow(dead_code)]
-mod narrow_kernel;
+use vulkane_test_support::narrow_kernel;
 
 const CAPS: [(&str, &str); 4] = [
     ("OpCapability Int8", "SPV_KHR_8bit_storage"),

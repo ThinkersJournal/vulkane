@@ -16,7 +16,7 @@
 //! Under `VULKANE_REQUIRE_DEVICE` it fails instead: both skip paths here are
 //! device-absence, which is exactly what that variable exists to catch.
 
-mod common;
+use vulkane_test_support::common;
 
 use std::ffi::CStr;
 use vulkane::raw::bindings::*;

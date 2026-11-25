@@ -19,6 +19,8 @@ unpopped-vocab = "~0.56.2"
 vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.25" }
 
 [dev-dependencies]
+# Shared test helpers (GPU lock witness, kernels, oracles): ROADMAP row 8n, in place of `#[path]` includes.
+vulkane-test-support = { path = "../vulkane-test-support" }
 # The live-device test opens a device through the safe wrapper (and its shared `tests/common`).
 vulkane = { path = "../vulkane" }
 vulkane-spirv-emit = { path = "../vulkane-spirv-emit" }

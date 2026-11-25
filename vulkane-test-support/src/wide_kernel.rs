@@ -20,8 +20,8 @@ use unpopped::ir::{BinaryOp, CastSpec, RoundMode, Saturation, ScalarExpr as E};
 use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt};
 use unpopped_vocab::ElementKind;
 
-pub(crate) const THREADS: u32 = 64;
-pub(crate) const K: usize = 9;
+pub const THREADS: u32 = 64;
+pub const K: usize = 9;
 const B: i64 = 1 << 32;
 
 fn bx(e: E) -> Box<E> {
@@ -49,7 +49,7 @@ fn rem(a: E, b: E, ty: ElementKind) -> E {
 }
 
 /// The kernel at `ty` (`I64` or `U64`).
-pub(crate) fn wide_kernel(ty: ElementKind) -> KernelFn {
+pub fn wide_kernel(ty: ElementKind) -> KernelFn {
     let c = |v: i64| E::ConstInt(v, ty);
     let (x, zero, a2) = (E::Local(0), E::Local(1), E::Local(2));
     let signed = ty == ElementKind::I64;
@@ -123,7 +123,7 @@ pub(crate) fn wide_kernel(ty: ElementKind) -> KernelFn {
 /// The host result of cell `(t, k)` computed at `width` bits (64 for the kernel, 32 for the
 /// mutant: a lowering that goes through 32 bits, which wraps every value, constant and count at 2^32),
 /// as the bits the device holds, by the ruled semantics.
-pub(crate) fn expected_at(width: u32, signed: bool, t: u64, k: usize) -> u64 {
+pub fn expected_at(width: u32, signed: bool, t: u64, k: usize) -> u64 {
     let m = if width == 64 {
         u64::MAX
     } else {
@@ -161,12 +161,12 @@ pub(crate) fn expected_at(width: u32, signed: bool, t: u64, k: usize) -> u64 {
 }
 
 /// The host result at the kernel's own 64 bits.
-pub(crate) fn expected(signed: bool, t: u64, k: usize) -> u64 {
+pub fn expected(signed: bool, t: u64, k: usize) -> u64 {
     expected_at(64, signed, t, k)
 }
 
 /// The device words (little-endian halves) of every cell, in cell order.
-pub(crate) fn expected_words(signed: bool) -> Vec<u32> {
+pub fn expected_words(signed: bool) -> Vec<u32> {
     (0..u64::from(THREADS))
         .flat_map(|t| (0..K).map(move |k| expected(signed, t, k)))
         .flat_map(|v| [v as u32, (v >> 32) as u32])

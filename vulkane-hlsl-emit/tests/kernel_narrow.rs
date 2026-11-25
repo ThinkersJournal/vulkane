@@ -10,18 +10,9 @@
 //! Without `dxc`, `spirv-val` or a device the tests follow `VULKANE_REQUIRE_DXC`, `VULKANE_REQUIRE_SPIRV_VAL`
 //! and `VULKANE_REQUIRE_DEVICE`; a device without the features prints a `SKIP (unsupported)` line naming them.
 
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(
-    dead_code,
-    unreachable_pub,
-    missing_docs,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod common;
-#[path = "../../vulkane-spirv-emit/tests/support/gpu.rs"]
-mod gpu;
-#[path = "../../vulkane-spirv-emit/tests/support/narrow_kernel.rs"]
-mod narrow_kernel;
+use vulkane_test_support::common;
+use vulkane_test_support::gpu;
+use vulkane_test_support::narrow_kernel;
 
 use std::process::Command;
 

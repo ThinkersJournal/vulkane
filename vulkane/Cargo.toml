@@ -73,6 +73,8 @@ ureq = "3"
 # Example-only dependencies. Not pulled into the vulkane crate's own
 # build — only when building the bundled examples that need them.
 [dev-dependencies]
+# Shared test helpers (GPU lock witness, kernels, oracles): ROADMAP row 8n, in place of `#[path]` includes.
+vulkane-test-support = { path = "../vulkane-test-support" }
 winit = "0.30"
 tempfile = { workspace = true }
 raw-window-handle = "0.6"

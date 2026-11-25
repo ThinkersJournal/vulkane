@@ -7,22 +7,9 @@
 //! controls the module declares are read from the device and printed; without a feature a
 //! `SKIP (unsupported)` line names it.
 
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(
-    dead_code,
-    unreachable_pub,
-    missing_docs,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod common;
-#[path = "support/float_kernel.rs"]
-#[allow(
-    dead_code,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod float_kernel;
-#[path = "support/gpu.rs"]
-mod gpu;
+use vulkane_test_support::common;
+use vulkane_test_support::float_kernel;
+use vulkane_test_support::gpu;
 
 use float_kernel::{Case, THREADS, data, float_kernel, same};
 use unpopped::backend::Backend;

@@ -14,10 +14,10 @@ use unpopped::ir::{CastSpec, RoundMode, Saturation, ScalarExpr as E};
 use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt};
 use unpopped_vocab::ElementKind;
 
-pub(crate) const THREADS: u32 = 256;
+pub const THREADS: u32 = 256;
 
 /// The compute dtype that matches `elem`'s signedness.
-pub(crate) fn compute_of(elem: ElementKind) -> ElementKind {
+pub fn compute_of(elem: ElementKind) -> ElementKind {
     match elem {
         ElementKind::I8 | ElementKind::I16 => ElementKind::I32,
         _ => ElementKind::U32,
@@ -78,13 +78,13 @@ fn kernel(
     k
 }
 
-pub(crate) fn widen_kernel(elem: ElementKind) -> KernelFn {
+pub fn widen_kernel(elem: ElementKind) -> KernelFn {
     kernel("widen", elem, compute_of(elem), |compute| {
         cast(E::Local(1), compute)
     })
 }
 
-pub(crate) fn wrap_kernel(elem: ElementKind) -> KernelFn {
+pub fn wrap_kernel(elem: ElementKind) -> KernelFn {
     kernel("wrap", elem, elem, |compute| {
         cast(
             E::Add(
@@ -97,7 +97,7 @@ pub(crate) fn wrap_kernel(elem: ElementKind) -> KernelFn {
 }
 
 /// The input element `t` as a signed number: a repeating pattern that includes the type's extremes.
-pub(crate) fn input(elem: ElementKind, t: u32) -> i64 {
+pub fn input(elem: ElementKind, t: u32) -> i64 {
     let (lo, hi): (i64, i64) = match elem {
         ElementKind::I8 => (-128, 127),
         ElementKind::U8 => (0, 255),
@@ -117,7 +117,7 @@ pub(crate) fn input(elem: ElementKind, t: u32) -> i64 {
 
 /// The bytes the host writes for the input: element `t` little-endian at `width` bytes, padded with
 /// zero words to `words` words.
-pub(crate) fn input_words(elem: ElementKind, words: usize) -> Vec<u32> {
+pub fn input_words(elem: ElementKind, words: usize) -> Vec<u32> {
     let width = width(elem);
     let mut bytes = Vec::new();
     for t in 0..THREADS {
@@ -131,7 +131,7 @@ pub(crate) fn input_words(elem: ElementKind, words: usize) -> Vec<u32> {
         .collect()
 }
 
-pub(crate) fn width(elem: ElementKind) -> usize {
+pub fn width(elem: ElementKind) -> usize {
     match elem {
         ElementKind::I8 | ElementKind::U8 => 1,
         _ => 2,
@@ -139,7 +139,7 @@ pub(crate) fn width(elem: ElementKind) -> usize {
 }
 
 /// Wrap `v` to `elem`'s width, signedness as `elem`: the value a narrowing cast gives.
-pub(crate) fn wrap(elem: ElementKind, v: i64) -> i64 {
+pub fn wrap(elem: ElementKind, v: i64) -> i64 {
     match elem {
         ElementKind::I8 => i64::from(v as i8),
         ElementKind::U8 => i64::from(v as u8),
@@ -149,13 +149,13 @@ pub(crate) fn wrap(elem: ElementKind, v: i64) -> i64 {
 }
 
 /// The expected 32-bit result of [`widen_kernel`] at `t` (the sign- or zero-extension of the input).
-pub(crate) fn widened(elem: ElementKind, t: u32) -> u32 {
+pub fn widened(elem: ElementKind, t: u32) -> u32 {
     wrap(elem, input(elem, t)) as u32
 }
 
 /// The wrong widening, the mutant: the *other* extension (zero-extend a signed element, sign-extend
 /// an unsigned one).
-pub(crate) fn widened_wrong(elem: ElementKind, t: u32) -> u32 {
+pub fn widened_wrong(elem: ElementKind, t: u32) -> u32 {
     let bits = width(elem) * 8;
     let v = wrap(elem, input(elem, t));
     let raw = (v as u32) & ((1u64 << bits) - 1) as u32;
@@ -168,6 +168,6 @@ pub(crate) fn widened_wrong(elem: ElementKind, t: u32) -> u32 {
 }
 
 /// The expected narrow result of [`wrap_kernel`] at `t`, as the element's own bits.
-pub(crate) fn wrapped(elem: ElementKind, t: u32) -> u32 {
+pub fn wrapped(elem: ElementKind, t: u32) -> u32 {
     (wrap(elem, input(elem, t) + 1) as u32) & ((1u64 << (width(elem) * 8)) - 1) as u32
 }

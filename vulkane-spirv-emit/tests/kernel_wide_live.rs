@@ -6,13 +6,9 @@
 //! prints the capability readout in a `SKIP (unsupported)` line and returns; without a device it
 //! follows `VULKANE_REQUIRE_DEVICE` like every other live test.
 
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
-mod common;
-#[path = "support/gpu.rs"]
-mod gpu;
-#[path = "support/wide_kernel.rs"]
-mod wide_kernel;
+use vulkane_test_support::common;
+use vulkane_test_support::gpu;
+use vulkane_test_support::wide_kernel;
 
 use unpopped::backend::Backend;
 use unpopped_vocab::ElementKind::{I64, U64};

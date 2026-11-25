@@ -21,6 +21,8 @@ fishstringer-slang-emit = "~0.4.0"
 vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.25" }
 
 [dev-dependencies]
+# Shared test helpers (GPU lock witness, kernels, oracles): ROADMAP row 8n, in place of `#[path]` includes.
+vulkane-test-support = { path = "../vulkane-test-support" }
 # The round-trip test lifts emitted HLSL back to the IR with the HLSL frontend (needs unpopped's `convert`).
 unpopped-convert = "~0.56.2"
 vulkane-hlsl-parse  = { path = "../vulkane-hlsl-parse" }

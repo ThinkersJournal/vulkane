@@ -6,26 +6,11 @@
 //! boundary and is compared at 64 bits. A device without the feature prints a `SKIP (unsupported)`
 //! line naming it. Atomics at 64 bits are a typed decline.
 
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(
-    dead_code,
-    unreachable_pub,
-    missing_docs,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod common;
-#[path = "support/glslang.rs"]
-mod glslang;
-#[path = "../../vulkane-spirv-emit/tests/support/gpu.rs"]
-mod gpu;
-#[path = "../../vulkane-spirv-emit/tests/support/reverse_kernel.rs"]
-mod reverse_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/wide_kernel.rs"]
-#[allow(
-    dead_code,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod wide_kernel;
+use vulkane_test_support::common;
+use vulkane_test_support::glslang;
+use vulkane_test_support::gpu;
+use vulkane_test_support::reverse_kernel;
+use vulkane_test_support::wide_kernel;
 
 use glslang::{glslang_words, validates};
 use unpopped::backend::Backend;

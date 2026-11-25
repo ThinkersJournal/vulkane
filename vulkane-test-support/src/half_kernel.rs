@@ -9,10 +9,10 @@
 use crate::cast_kernel::{f16_decode, f16_round};
 use crate::float_kernel::Case;
 
-pub(crate) const THREADS: usize = 256;
+pub const THREADS: usize = 256;
 
 /// `(a, b)` as `f64`; each is rounded to half for the input buffers (all are exact halves or NaN).
-pub(crate) const PAIRS: [(f64, f64); 14] = [
+pub const PAIRS: [(f64, f64); 14] = [
     (0.1, 3.0),
     (65504.0, 2.0),
     // 2^-24 * 0.5 ties to zero, then + a = the smallest subnormal (flushed to 0 by FTZ).
@@ -69,7 +69,7 @@ fn pack(halves: &[u16]) -> Vec<u32> {
 }
 
 /// `(a words, b words, expected words, mutant words)` for `case`: the case's mutant.
-pub(crate) fn data(case: Case) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>) {
+pub fn data(case: Case) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>) {
     let (mut a, mut b, mut want, mut mutant) = (vec![], vec![], vec![], vec![]);
     for k in 0..THREADS {
         let (x, y) = PAIRS[k % PAIRS.len()];
@@ -83,7 +83,7 @@ pub(crate) fn data(case: Case) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>) {
 }
 
 /// Whether two half word streams agree: equal bits, or both NaN (a NaN's payload is unspecified).
-pub(crate) fn same(got: &[u32], want: &[u32]) -> Result<(), String> {
+pub fn same(got: &[u32], want: &[u32]) -> Result<(), String> {
     let nan = |h: u16| h & 0x7c00 == 0x7c00 && h & 0x03ff != 0;
     for (i, (g, w)) in got.iter().zip(want).enumerate() {
         for half in 0..2 {

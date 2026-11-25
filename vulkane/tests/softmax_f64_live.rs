@@ -12,7 +12,7 @@
 //! `VULKANE_REQUIRE_SLANGC`; without a device it follows `VULKANE_REQUIRE_DEVICE` like
 //! every other live test.
 
-mod common;
+use vulkane_test_support::common;
 
 use std::path::PathBuf;
 use std::process::Command;

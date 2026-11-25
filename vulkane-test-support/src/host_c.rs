@@ -77,7 +77,7 @@ fn parse_columns(text: &str) -> Vec<Vec<u32>> {
 
 /// Compile and run the C program; the per-case output columns. `sources` is each case's
 /// `(kernel name, C source)`.
-pub(crate) fn host_results(
+pub fn host_results(
     cc: &cc::CCompiler,
     cases: &[Case],
     sources: &[(String, String)],

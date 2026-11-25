@@ -9,7 +9,7 @@ use unpopped::ir::ScalarExpr as E;
 use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt};
 use unpopped_vocab::ElementKind::U32;
 
-pub(crate) const BLOCK: u32 = 128;
+pub const BLOCK: u32 = 128;
 
 fn c(v: i64) -> E {
     E::ConstInt(v, U32)
@@ -20,7 +20,7 @@ fn mul(a: E, k: i64) -> E {
 }
 
 /// The kernel for a launch requiring a subgroup size in `min..=max`.
-pub(crate) fn subgroup_kernel(min: u32, max: u32) -> KernelFn {
+pub fn subgroup_kernel(min: u32, max: u32) -> KernelFn {
     let packed = E::Add(
         Box::new(E::Add(
             Box::new(E::Exec(ExecId::LaneId)),
@@ -55,6 +55,6 @@ pub(crate) fn subgroup_kernel(min: u32, max: u32) -> KernelFn {
 
 #[allow(dead_code, reason = "the WGSL test only needs the kernel")]
 /// What thread `t` must store when the device runs subgroups of `size` lanes.
-pub(crate) fn expected(t: u32, size: u32) -> u32 {
+pub fn expected(t: u32, size: u32) -> u32 {
     t % size + 256 * (t / size) + 65536 * size
 }

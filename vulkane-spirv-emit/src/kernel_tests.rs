@@ -13,8 +13,7 @@ use crate::tests::assert_valid;
 
 const N: u32 = 64;
 
-#[path = "../tests/support/reverse_kernel.rs"]
-pub(crate) mod reverse_kernel;
+pub(crate) use vulkane_test_support::reverse_kernel;
 
 /// The block-reverse kernel over `N` threads with a static shared array.
 fn reverse(with_barrier: bool) -> KernelFn {
@@ -198,9 +197,8 @@ fn what_this_slice_does_not_lower_is_a_typed_decline_naming_it() {
     declined(&grid_dep, "GridDepWait");
 }
 
-#[path = "../tests/support/flow_kernel.rs"]
-mod flow_kernel;
 use flow_kernel::{bin, flow_kernel};
+use vulkane_test_support::flow_kernel;
 
 #[test]
 fn nested_loops_with_break_continue_and_early_return_validate() {
@@ -285,8 +283,7 @@ fn a_dynamic_extent_is_a_specialization_constant_sized_array() {
     assert_eq!(count(&fixed.source, "OpSpecConstant"), 0);
 }
 
-#[path = "../tests/support/private_kernel.rs"]
-mod private_kernel;
+use vulkane_test_support::private_kernel;
 
 /// Row 8k: a `Private` array is a module-scope `Private` variable, not a `Workgroup` one.
 #[test]
@@ -330,8 +327,7 @@ fn a_constant_allocation_is_a_typed_decline() {
     }
 }
 
-#[path = "../tests/support/atomic_kernel.rs"]
-mod atomic_kernel;
+use vulkane_test_support::atomic_kernel;
 
 /// Row 8d: the atomic kernel validates and holds each atomic instruction; the racy control swaps
 /// exactly one `OpAtomicIAdd` for plain memory traffic (the same query finds both counts).

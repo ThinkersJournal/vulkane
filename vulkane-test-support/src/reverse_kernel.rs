@@ -60,7 +60,7 @@ fn consume(n: u32) -> Vec<Stmt> {
 
 /// The block-reverse kernel over `n` threads. `dynamic`: the shared array is sized by scalar
 /// parameter 2 (local 4), a specialization constant, instead of the static `n`.
-pub(crate) fn reverse(n: u32, with_barrier: bool, dynamic: bool) -> KernelFn {
+pub fn reverse(n: u32, with_barrier: bool, dynamic: bool) -> KernelFn {
     let mut body = produce();
     if with_barrier {
         body.push(Stmt::Barrier {

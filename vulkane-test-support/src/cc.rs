@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// A host C compiler and how to drive it.
-pub(crate) struct CCompiler {
+pub struct CCompiler {
     /// Base command, already carrying whatever environment it needs (the MSVC
     /// tool from `cc`'s registry lookup carries INCLUDE/LIB; a PATH `cc` does not
     /// need any).
@@ -43,7 +43,7 @@ pub(crate) struct CCompiler {
 /// perfectly good toolchain sitting in Program Files. A test that cannot run
 /// where it is written is not a test there, and one that says `ok` while doing
 /// so is worse than one that fails.
-pub(crate) fn find_compiler() -> Option<CCompiler> {
+pub fn find_compiler() -> Option<CCompiler> {
     for (cmd, msvc) in [
         ("cc", false),
         ("gcc", false),
@@ -123,7 +123,7 @@ impl CCompiler {
     /// test passes trivially and proves nothing, because there is no optimizer to
     /// do the contracting. The value-correctness tests stay unoptimized so a
     /// failure there is unambiguously the emitter's rather than the compiler's.
-    pub(crate) fn compile(&self, src: &Path, exe: &Path, optimize: bool) -> Result<(), String> {
+    pub fn compile(&self, src: &Path, exe: &Path, optimize: bool) -> Result<(), String> {
         // A `vcvars` install has to be entered through `cmd`, because the batch
         // file's whole job is to mutate the environment of the process that
         // calls it. Spawning `cl` directly after running it in a *different*

@@ -7,18 +7,9 @@
 //! `shaderFloat64` where a case uses `f64`; the float controls the module declares (including
 //! `RoundingModeRTE`) are checked against the device's and a missing one is a `SKIP (unsupported)`.
 
-#[path = "support/cast_kernel.rs"]
-mod cast_kernel;
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(
-    dead_code,
-    unreachable_pub,
-    missing_docs,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod common;
-#[path = "support/gpu.rs"]
-mod gpu;
+use vulkane_test_support::cast_kernel;
+use vulkane_test_support::common;
+use vulkane_test_support::gpu;
 
 use cast_kernel::{CastCase, THREADS, agree, cases, kernel, words};
 use unpopped::backend::Backend;

@@ -21,13 +21,13 @@ use unpopped::kernel::{
 };
 use unpopped_vocab::ElementKind;
 
-pub(crate) const BLOCK: u32 = 64;
-pub(crate) const BLOCKS: u32 = 16;
+pub const BLOCK: u32 = 64;
+pub const BLOCKS: u32 = 16;
 #[allow(dead_code)]
-pub(crate) const THREADS: u32 = BLOCK * BLOCKS;
+pub const THREADS: u32 = BLOCK * BLOCKS;
 /// The 64-bit value the harness fill leaves in a cell, as `I64`.
-pub(crate) const SENTINEL: u64 = 0xAAAA_AAAA_AAAA_AAAA;
-pub(crate) const B: i64 = 1 << 32;
+pub const SENTINEL: u64 = 0xAAAA_AAAA_AAAA_AAAA;
+pub const B: i64 = 1 << 32;
 
 fn bx(e: E) -> Box<E> {
     Box::new(e)
@@ -37,7 +37,7 @@ fn add(a: E, b: E) -> E {
     E::Add(bx(a), bx(b))
 }
 
-pub(crate) fn atomic_wide_kernel(ty: ElementKind, racy: bool) -> KernelFn {
+pub fn atomic_wide_kernel(ty: ElementKind, racy: bool) -> KernelFn {
     let c = |v: i64| E::ConstInt(v, ty);
     let cell = |i: i64| Place::Logical {
         buffer: 0,
