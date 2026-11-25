@@ -10,7 +10,7 @@
 
 use unpopped::ir::{ArithOp, BinaryOp, UnaryOp};
 
-use crate::ops::Family;
+use crate::family::Family;
 
 const CITE: &str = "Vulkan spec, Vulkan Environment for SPIR-V, Precision of Individual Operations";
 
