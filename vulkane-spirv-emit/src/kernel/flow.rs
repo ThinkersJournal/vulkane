@@ -150,7 +150,12 @@ impl Kc<'_> {
         self.lower_loop(&Head::Counted(local, end, step), body)
     }
 
-    fn lower_if(&self, cond: &ScalarExpr, then: &Block, els: &Block) -> Result<(), LowerError> {
+    pub(super) fn lower_if(
+        &self,
+        cond: &ScalarExpr,
+        then: &Block,
+        els: &Block,
+    ) -> Result<(), LowerError> {
         let c = self.truthy(cond)?;
         let (t, f, merge) = (self.id(), self.id(), self.id());
         {
