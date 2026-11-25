@@ -166,6 +166,7 @@ impl W<'_> {
     fn stmt(&mut self, s: &Stmt) -> Result<(), LowerError> {
         match s {
             Stmt::Let { .. } | Stmt::Assign { .. } | Stmt::Load { .. } | Stmt::Store { .. } => self.data(s),
+            Stmt::MaskedLoad { .. } | Stmt::MaskedStore { .. } => self.masked(s),
             Stmt::Barrier { .. } | Stmt::Fence { .. } => self.sync(s),
             Stmt::AtomicRmw { .. } | Stmt::AtomicCas { .. } => self.atomic(s),
             Stmt::If { .. } | Stmt::For { .. } | Stmt::While { .. } => self.control(s),
@@ -240,6 +241,52 @@ impl W<'_> {
             }
             _ => unreachable!("`stmt` routes only data statements here"),
         }
+    }
+
+    /// Predicated access (ROADMAP 9e): a guarded plain access, so the memory is not touched where the mask is false
+    /// (no bounds check, no race record: exactly the IR's meaning). `MaskedLoad` is
+    /// `if (mask) { l = element; } else { l = fill; }`, `MaskedStore` is `if (mask) { element = value; }`; each goes
+    /// through the plain `Load` / `Store` path, so an atomically typed buffer and a pinned float value behave as there.
+    fn masked(&mut self, s: &Stmt) -> Result<(), LowerError> {
+        match s {
+            Stmt::MaskedLoad {
+                local,
+                place,
+                mask,
+                fill,
+            } => {
+                let t = self.condition(mask)?;
+                self.line(&format!("if {t} {{"));
+                self.guarded(&Stmt::Load {
+                    local: *local,
+                    place: place.clone(),
+                })?;
+                self.line("} else {");
+                self.guarded(&Stmt::Assign {
+                    local: *local,
+                    value: fill.clone(),
+                })?;
+                self.emit("}")
+            }
+            Stmt::MaskedStore { place, value, mask } => {
+                let t = self.condition(mask)?;
+                self.line(&format!("if {t} {{"));
+                self.guarded(&Stmt::Store {
+                    place: place.clone(),
+                    value: value.clone(),
+                })?;
+                self.emit("}")
+            }
+            _ => unreachable!("`stmt` routes only masked statements here"),
+        }
+    }
+
+    /// One data statement one level deeper (the depth is restored on an error too).
+    fn guarded(&mut self, s: &Stmt) -> Result<(), LowerError> {
+        self.depth += 1;
+        let r = self.data(s);
+        self.depth -= 1;
+        r
     }
 
     fn sync(&mut self, s: &Stmt) -> Result<(), LowerError> {

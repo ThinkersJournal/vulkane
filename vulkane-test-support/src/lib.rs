@@ -15,6 +15,7 @@ pub mod gpu;
 pub mod grid_kernel;
 pub mod half_kernel;
 pub mod host_c;
+pub mod masked_kernel;
 pub mod narrow_kernel;
 pub mod private_kernel;
 pub mod reverse_kernel;
