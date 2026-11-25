@@ -6,7 +6,7 @@ use unpopped::backend::{Backend, GeneratedKernel, LowerError};
 use unpopped::exec::{ExecId, Extent, Scope};
 use unpopped::ir::ScalarExpr as E;
 use unpopped::kernel::{BarrierKind, Block, KernelFn, LocalDecl, MemoryOrder, Param, Stmt};
-use unpopped_vocab::ElementKind::{F32, U32};
+use unpopped_vocab::ElementKind::U32;
 
 use crate::SpirV;
 use crate::tests::assert_valid;
@@ -143,8 +143,8 @@ fn declined(k: &KernelFn, needle: &str) {
 #[test]
 fn what_this_slice_does_not_lower_is_a_typed_decline_naming_it() {
     let mut f = reverse(true);
-    f.compute = F32;
-    declined(&f, "integer kernels only");
+    f.compute = unpopped_vocab::ElementKind::Bf16;
+    declined(&f, "kernels only");
 
     let mut d = reverse(true);
     d.locals.push(LocalDecl::scalar(U32));

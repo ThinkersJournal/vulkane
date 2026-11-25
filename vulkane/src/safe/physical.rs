@@ -658,6 +658,51 @@ impl PhysicalDevice {
         })
     }
 
+    /// Query the device's float-controls properties —
+    /// `VkPhysicalDeviceFloatControlsProperties` (Vulkan 1.2 core, or `VK_KHR_shader_float_controls`):
+    /// which of the `DenormPreserve` and `SignedZeroInfNanPreserve` SPIR-V execution modes the device
+    /// honours at 32 and 64 bits. A SPIR-V module that declares one the device does not support is
+    /// invalid; a kernel that needs IEEE denormal, NaN, infinity and signed-zero handling checks
+    /// these before it creates the pipeline.
+    ///
+    /// Returns `None` when `vkGetPhysicalDeviceProperties2` is missing or the device offers neither
+    /// Vulkan 1.2 (the effective version) nor the extension (a struct nothing filled in must not read
+    /// as "no support" and not as "support").
+    pub fn float_controls_properties(&self) -> Option<FloatControlsProperties> {
+        let get2 = self.instance.dispatch.vkGetPhysicalDeviceProperties2?;
+        let api = self.effective_api_version();
+        let core_1_2 = api.major() > 1 || api.minor() >= 2;
+        let has_ext = self
+            .enumerate_extension_properties()
+            .ok()?
+            .iter()
+            .any(|e| e.name() == "VK_KHR_shader_float_controls");
+        if !core_1_2 && !has_ext {
+            return None;
+        }
+        let mut chain = crate::safe::PNextChain::new();
+        chain.push(VkPhysicalDeviceFloatControlsProperties::new_pnext());
+        let mut props2 = VkPhysicalDeviceProperties2 {
+            sType: VkStructureType::STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+            pNext: chain.head_mut(),
+            ..Default::default()
+        };
+        // Safety: handle valid; props2 + chain live for the call.
+        unsafe { get2(self.handle, &mut props2) };
+        let fc = chain.get::<VkPhysicalDeviceFloatControlsProperties>()?;
+        Some(FloatControlsProperties {
+            denorm_preserve_f32: fc.shaderDenormPreserveFloat32 != 0,
+            denorm_preserve_f64: fc.shaderDenormPreserveFloat64 != 0,
+            signed_zero_inf_nan_preserve_f32: fc.shaderSignedZeroInfNanPreserveFloat32 != 0,
+            signed_zero_inf_nan_preserve_f64: fc.shaderSignedZeroInfNanPreserveFloat64 != 0,
+            denorm_preserve_f16: fc.shaderDenormPreserveFloat16 != 0,
+            signed_zero_inf_nan_preserve_f16: fc.shaderSignedZeroInfNanPreserveFloat16 != 0,
+            rounding_mode_rte_f16: fc.shaderRoundingModeRTEFloat16 != 0,
+            rounding_mode_rte_f32: fc.shaderRoundingModeRTEFloat32 != 0,
+            rounding_mode_rte_f64: fc.shaderRoundingModeRTEFloat64 != 0,
+        })
+    }
+
     /// Query the driver's identity — `VkPhysicalDeviceDriverProperties`
     /// (Vulkan 1.2 core, or `VK_KHR_driver_properties`).
     ///
@@ -1386,6 +1431,31 @@ impl std::ops::BitOr for SubgroupFeatureFlags {
     fn bitor(self, rhs: Self) -> Self {
         Self(self.0 | rhs.0)
     }
+}
+
+/// Which float-controls execution modes a device honours.
+///
+/// Returned by [`PhysicalDevice::float_controls_properties`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FloatControlsProperties {
+    /// `shaderDenormPreserveFloat32`: `DenormPreserve 32` is allowed.
+    pub denorm_preserve_f32: bool,
+    /// `shaderDenormPreserveFloat64`: `DenormPreserve 64` is allowed.
+    pub denorm_preserve_f64: bool,
+    /// `shaderSignedZeroInfNanPreserveFloat32`: `SignedZeroInfNanPreserve 32` is allowed.
+    pub signed_zero_inf_nan_preserve_f32: bool,
+    /// `shaderSignedZeroInfNanPreserveFloat64`: `SignedZeroInfNanPreserve 64` is allowed.
+    pub signed_zero_inf_nan_preserve_f64: bool,
+    /// `shaderDenormPreserveFloat16`: `DenormPreserve 16` is allowed.
+    pub denorm_preserve_f16: bool,
+    /// `shaderSignedZeroInfNanPreserveFloat16`: `SignedZeroInfNanPreserve 16` is allowed.
+    pub signed_zero_inf_nan_preserve_f16: bool,
+    /// `shaderRoundingModeRTEFloat16`: `RoundingModeRTE 16` is allowed.
+    pub rounding_mode_rte_f16: bool,
+    /// `shaderRoundingModeRTEFloat32`: `RoundingModeRTE 32` is allowed.
+    pub rounding_mode_rte_f32: bool,
+    /// `shaderRoundingModeRTEFloat64`: `RoundingModeRTE 64` is allowed.
+    pub rounding_mode_rte_f64: bool,
 }
 
 /// A device's subgroup ("wave" on AMD/HLSL, "warp" on NVIDIA) properties.
