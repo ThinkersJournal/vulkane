@@ -5,8 +5,9 @@ use std::cell::Cell;
 use std::fmt::Write;
 
 use unpopped::exec::{ExecId, Scope};
-use unpopped::ir::BinaryOp;
+use unpopped::ir::{BinaryOp, RoundMode};
 use unpopped::kernel::{AtomicOp, BufferRole, MemoryOrder};
+use unpopped_vocab::ElementKind;
 use vulkane_kernel_text::{BIT_OPS, COMPARISONS, Dialect, Layout, operator};
 
 /// The MSL backend of Unpopped: [`Backend::lower_kernel`](unpopped::backend::Backend::lower_kernel) is the entry point.
@@ -70,6 +71,17 @@ fn ty(signed: bool) -> &'static str {
     if signed { "int" } else { "uint" }
 }
 
+/// The Metal type of an 8- or 16-bit integer element (Metal has all four natively).
+fn narrow_ty(elem: ElementKind) -> Option<&'static str> {
+    match elem {
+        ElementKind::I8 => Some("char"),
+        ElementKind::U8 => Some("uchar"),
+        ElementKind::I16 => Some("short"),
+        ElementKind::U16 => Some("ushort"),
+        _ => None,
+    }
+}
+
 /// The Metal type of a buffer or array element: `atomic_int`/`atomic_uint` when the kernel applies
 /// an atomic to it (Metal atomics act on atomic types in `device` or `threadgroup` memory only).
 fn elem_ty(signed: bool, atomic: bool) -> &'static str {
@@ -116,6 +128,28 @@ impl Dialect for IntKernel {
         "msl"
     }
 
+    fn narrow_ints(&self) -> bool {
+        true
+    }
+
+    /// A C-style cast between integer widths: modular when narrowing (Metal is C++ based; the result of narrowing a
+    /// signed value is implementation-defined before C++20 and two's complement in practice, not compiled here),
+    /// sign-extending a signed narrow source and zero-extending an unsigned one when widening.
+    fn convert(
+        &self,
+        x: &str,
+        _from: ElementKind,
+        to: ElementKind,
+        _round: RoundMode,
+    ) -> Option<String> {
+        let target = match to {
+            ElementKind::I32 => "int",
+            ElementKind::U32 => "uint",
+            other => narrow_ty(other)?,
+        };
+        Some(format!("(({target})({x}))"))
+    }
+
     fn prologue(&self, layout: &Layout) -> String {
         let t = ty(layout.signed);
         let mut s = String::from(
@@ -133,7 +167,7 @@ impl Dialect for IntKernel {
             let _ = writeln!(
                 s,
                 "    device {access}{}* {} [[buffer({})]],",
-                elem_ty(layout.signed, b.atomic),
+                narrow_ty(b.elem).unwrap_or_else(|| elem_ty(layout.signed, b.atomic)),
                 b.name,
                 b.binding
             );
@@ -153,7 +187,11 @@ impl Dialect for IntKernel {
             );
         }
         for i in 0..layout.locals {
-            let _ = writeln!(s, "    {t} l{i} = {};", self.lit(0, layout.signed));
+            if let Some(nt) = layout.local_elems.get(i).copied().and_then(narrow_ty) {
+                let _ = writeln!(s, "    {nt} l{i} = ({nt})0;");
+            } else {
+                let _ = writeln!(s, "    {t} l{i} = {};", self.lit(0, layout.signed));
+            }
         }
         s
     }

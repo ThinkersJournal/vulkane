@@ -44,11 +44,15 @@
 //! `simdgroup_barrier`. `BlockDim` and `GridDim` are launch constants the walker folds. A launch's required subgroup size
 //! range cannot be requested in Metal, so the source carries it as a `// requires a subgroup size in a..=b` comment.
 //!
+//! 8- and 16-bit integer buffers and locals (`I8`/`U8`/`I16`/`U16`) in an `I32`/`U32` kernel are `char`, `uchar`, `short`
+//! and `ushort`, reached by C-style casts (modular narrowing, sign- or zero-extending widening); an atomic beside one is a
+//! decline (the atomic target would have to be shown 32-bit). Text pinned, **not compiled**.
+//!
 //! ## Declined by name
 //!
 //! A kernel named with an MSL keyword or type name (`float`, `kernel`, `tid`, ...: `kernel void float(` cannot compile),
 //! `Bf16` (Metal 3.1 has `bfloat`, not spelled yet), `F64` (Metal has no `double`), `Div`, `Sqrt` and the transcendentals (looser bound than the contract tier), other
-//! 64-bit, 8/16-bit integer and vector kernels, float atomics, a subgroup-scope atomic, scalar parameters, the device ids
+//! 64-bit and vector kernels, float atomics, a subgroup-scope atomic, scalar parameters, the device ids
 //! (`DeviceRank`, `DeviceCount`), and a `Barrier` or `Fence` at a scope other than block or subgroup (a barrier) / block or device (a
 //! fence): each a typed `UnsupportedKernel` from the shared walker naming it. The twelve NVIDIA-only
 //! statements of board 434 C are refused by name first. The plan path (`Backend::lower`) is not
