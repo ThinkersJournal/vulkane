@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! The MSL spellings of an `F32` kernel (ROADMAP row 8o, slice 2): the float arm of the shared walker.
 //!
-//! Metal compiles with fast math on by default, which may flush denormals, assume no NaN or infinity
-//! and fuse a multiply into an add. The source therefore opens with `#pragma METAL fp math_mode(safe)`
+//! Metal compiles with fast math on by default (spec 1.6: no NaNs, no INFs, no signed zeros, reassociation and
+//! fused contraction allowed). The source therefore opens with `#pragma METAL fp math_mode(safe)`
 //! and `#pragma METAL fp contract(off)` (Metal 3.2), and every float operation is also pinned in a
 //! `const` temporary, as the GLSL arm pins it in a `precise` one. **Not compiled here:** CI has no
 //! Metal compiler, so this text is pinned, not run (the oracle is a macOS self-hosted runner).
+//!
+//! **Hardware caveat, stated not hidden:** MSL 8.1 says "Denormalized single-precision, half-precision, or brain
+//! floating-point numbers passed as input to or produced as the output of ... arithmetic operations may be flushed
+//! to zero" and 8.2 says "Either round ties to even or round toward zero rounding mode may be supported", so no
+//! source pragma makes a Metal float kernel bit-exact IEEE: a device oracle must treat subnormals and the last bit
+//! as the device's, as the WGSL arm does.
 
 use std::fmt::Write;
 
