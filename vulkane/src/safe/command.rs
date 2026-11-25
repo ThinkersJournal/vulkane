@@ -37,7 +37,7 @@ use super::acceleration_structure::{
     AccelerationStructureGeometry, AccelerationStructureType, BuildRange,
 };
 use super::descriptor::{DescriptorSet, ShaderStageFlags};
-use super::device::DeviceInner;
+use super::device_inner::DeviceInner;
 use super::flags::{AccessFlags, AccessFlags2, PipelineStage, PipelineStage2};
 use super::graphics_pipeline::GraphicsPipeline;
 use super::image::{BufferImageCopy, Image, ImageBarrier, ImageLayout, ImageView, Sampler};

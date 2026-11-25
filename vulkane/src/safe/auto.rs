@@ -49,7 +49,7 @@
 //!
 //! Verbose but completely safe — no `unsafe` in user code.
 
-// The generated file references `crate::safe::device::DeviceInner`,
+// The generated file references `crate::safe::device_inner::DeviceInner`,
 // `crate::safe::Device`, `crate::safe::Result`, `crate::safe::Error`,
 // and `crate::safe::check`. All are in scope via the fully-qualified
 // paths the generator emits, so no `use` imports are required here.

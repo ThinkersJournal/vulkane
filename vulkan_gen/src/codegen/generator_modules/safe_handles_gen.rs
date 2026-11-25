@@ -291,7 +291,7 @@ fn emit_wrapper(cand: &Candidate) -> String {
          /// The wrapped handle is destroyed automatically on drop.\n\
          pub struct {wrapper} {{\n\
          \x20   handle: crate::raw::bindings::{handle_vk},\n\
-         \x20   device: std::sync::Arc<crate::safe::device::DeviceInner>,\n\
+         \x20   device: std::sync::Arc<crate::safe::device_inner::DeviceInner>,\n\
          }}\n\n"
     ));
 

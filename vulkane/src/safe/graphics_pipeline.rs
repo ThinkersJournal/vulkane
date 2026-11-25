@@ -45,7 +45,7 @@
 //! ```
 
 use super::descriptor::ShaderStageFlags;
-use super::device::DeviceInner;
+use super::device_inner::DeviceInner;
 use super::image::Format;
 use super::pipeline::PipelineLayout;
 use super::render_pass::RenderPass;

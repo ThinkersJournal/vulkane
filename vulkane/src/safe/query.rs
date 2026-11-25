@@ -16,7 +16,7 @@
 //! ticks. To convert to nanoseconds, multiply by
 //! [`PhysicalDevice::timestamp_period`](super::PhysicalDevice::timestamp_period).
 
-use super::device::DeviceInner;
+use super::device_inner::DeviceInner;
 use super::{Device, Error, Result, check};
 use crate::raw::bindings::*;
 use std::sync::Arc;

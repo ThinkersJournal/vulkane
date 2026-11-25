@@ -47,7 +47,7 @@
 //! via their `accelerationStructureEXT` descriptor slot or
 //! `rayQueryEXT` initializer.
 
-use super::device::DeviceInner;
+use super::device_inner::DeviceInner;
 use super::{Buffer, Device, Error, Result};
 use crate::raw::bindings::*;
 use crate::safe::auto::AccelerationStructureKHR;

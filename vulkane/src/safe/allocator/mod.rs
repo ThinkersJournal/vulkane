@@ -64,7 +64,7 @@ use std::sync::{Arc, Mutex};
 use crate::raw::bindings::*;
 
 use super::buffer::{Buffer, BufferCreateInfo, MemoryRequirements};
-use super::device::DeviceInner;
+use super::device_inner::DeviceInner;
 use super::image::{Image, Image2dCreateInfo};
 use super::physical::PhysicalDevice;
 use super::{Device, Error, Result, check};
