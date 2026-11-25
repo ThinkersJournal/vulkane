@@ -17,10 +17,29 @@ fn ty(signed: bool) -> &'static str {
 }
 
 /// `x`, `y` or `z`.
-fn axis(a: u8) -> Option<char> {
+pub(crate) fn axis(a: u8) -> Option<char> {
     ["x", "y", "z"]
         .get(usize::from(a))
         .and_then(|s| s.chars().next())
+}
+
+/// The workgroup-and-buffer barrier, at block scope only.
+pub(crate) fn barrier(scope: Scope) -> Option<String> {
+    (scope == Scope::Block).then(|| {
+        "threadgroup_barrier(mem_flags::mem_threadgroup | mem_flags::mem_device);".to_string()
+    })
+}
+
+/// A fence at block or device scope; every order collapses to `memory_order_seq_cst`.
+pub(crate) fn fence(scope: Scope, _order: MemoryOrder) -> Option<String> {
+    let (flags, thread_scope) = match scope {
+        Scope::Block => ("mem_threadgroup", "thread_scope_threadgroup"),
+        Scope::Device => ("mem_device", "thread_scope_device"),
+        _ => return None,
+    };
+    Some(format!(
+        "atomic_thread_fence(mem_flags::{flags}, memory_order_seq_cst, {thread_scope});"
+    ))
 }
 
 impl Dialect for Msl {
@@ -116,19 +135,10 @@ impl Dialect for Msl {
     }
 
     fn barrier(&self, scope: Scope) -> Option<String> {
-        (scope == Scope::Block).then(|| {
-            "threadgroup_barrier(mem_flags::mem_threadgroup | mem_flags::mem_device);".to_string()
-        })
+        barrier(scope)
     }
 
-    fn fence(&self, scope: Scope, _order: MemoryOrder) -> Option<String> {
-        let (flags, thread_scope) = match scope {
-            Scope::Block => ("mem_threadgroup", "thread_scope_threadgroup"),
-            Scope::Device => ("mem_device", "thread_scope_device"),
-            _ => return None,
-        };
-        Some(format!(
-            "atomic_thread_fence(mem_flags::{flags}, memory_order_seq_cst, {thread_scope});"
-        ))
+    fn fence(&self, scope: Scope, order: MemoryOrder) -> Option<String> {
+        fence(scope, order)
     }
 }

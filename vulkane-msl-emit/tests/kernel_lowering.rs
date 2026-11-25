@@ -147,11 +147,17 @@ fn a_fence_is_spelled_at_block_and_device_scope_and_collapses_to_seq_cst() {
 #[test]
 fn what_is_not_spelled_is_declined_by_name() {
     // Floats, 64-bit, atomics, subgroup ids, a scalar parameter and an out-of-scope barrier.
+    // (An `F32` kernel lowers; Metal has no `double`, so `F64` is declined.)
     let float = decline(&float_kernel::float_kernel(
-        ElementKind::F32,
+        ElementKind::F64,
         float_kernel::Case::MulAdd,
     ));
     assert!(float.contains("msl"), "{float}");
+    let sqrt = decline(&float_kernel::float_kernel(
+        ElementKind::F32,
+        float_kernel::Case::Sqrt,
+    ));
+    assert!(sqrt.contains("msl"), "{sqrt}");
     let wide = decline(&wide_kernel::wide_kernel(ElementKind::I64));
     assert!(wide.contains("msl"), "{wide}");
     let atomic = decline(&atomic_kernel::atomic_kernel(false));
@@ -170,6 +176,32 @@ fn what_is_not_spelled_is_declined_by_name() {
         kind: unpopped::kernel::BarrierKind::Full,
     });
     assert!(decline(&device).contains("msl"));
+}
+
+#[test]
+fn an_f32_kernel_pins_safe_math_and_no_contraction_and_keeps_every_op_unfused() {
+    let src = text(&float_kernel::float_kernel(
+        ElementKind::F32,
+        float_kernel::Case::MulAdd,
+    ));
+    assert!(src.contains("#pragma METAL fp math_mode(safe)"), "{src}");
+    assert!(src.contains("#pragma METAL fp contract(off)"), "{src}");
+    assert!(src.contains("device const float*"), "{src}");
+    assert!(src.contains("const float "), "{src}");
+}
+
+#[test]
+fn float_max_propagates_nan_and_floor_is_spelled() {
+    let max = text(&float_kernel::float_kernel(
+        ElementKind::F32,
+        float_kernel::Case::Max,
+    ));
+    assert!(max.contains("isnan("), "{max}");
+    let floor = text(&float_kernel::float_kernel(
+        ElementKind::F32,
+        float_kernel::Case::Floor,
+    ));
+    assert!(floor.contains("floor("), "{floor}");
 }
 
 #[test]
