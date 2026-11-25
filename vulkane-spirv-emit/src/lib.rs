@@ -126,6 +126,7 @@
 
 mod accuracy;
 mod cast;
+mod family;
 mod features;
 mod half;
 mod kernel;
@@ -150,8 +151,9 @@ use unpopped::plan::{KernelPlan, Schedule};
 use unpopped::types::Ty;
 use unpopped_vocab::{ElementKind, TargetId};
 
+use family::Family;
 pub use features::{RequiredFeatures, required_features};
-use ops::{Em, Family, lo};
+use ops::{Em, lo};
 use skeleton::declare;
 
 /// The SPIR-V compute-shader backend. Lowers a [`KernelPlan`] to a SPIR-V module.

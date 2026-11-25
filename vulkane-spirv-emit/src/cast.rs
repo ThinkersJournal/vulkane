@@ -23,7 +23,8 @@ use unpopped::backend::{Decline, DeclinedOp, LowerError, Spelling};
 use unpopped::ir::{CastSpec, RoundMode, Saturation};
 use unpopped_vocab::ElementKind;
 
-use crate::ops::{Em, Family, lo};
+use crate::family::Family;
+use crate::ops::{Em, lo};
 
 fn declined(why: String) -> Result<Spelling, LowerError> {
     Ok(Spelling::Declined(Decline::UnsupportedOp {
