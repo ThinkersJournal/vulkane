@@ -35,7 +35,7 @@ fn lower(with_barrier: bool) -> GeneratedKernel {
     Hlsl.lower_kernel(&reverse_kernel::reverse(
         WORKGROUP_SIZE,
         with_barrier,
-        false,
+        reverse_kernel::SharedLen::Static,
     ))
     .expect("the HLSL backend lowers the reverse kernel")
 }

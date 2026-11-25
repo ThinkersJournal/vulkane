@@ -64,6 +64,7 @@ fn packed() -> E {
     })
 }
 
+/// A kernel that stores each thread's block and grid ids.
 pub fn grid_kernel() -> KernelFn {
     let body = vec![
         Stmt::Let {
@@ -106,7 +107,6 @@ pub fn grid_kernel() -> KernelFn {
 }
 
 /// The word cell `(x, y, z)` of the launch must hold: the ids of the thread that owns it.
-#[allow(dead_code)]
 pub fn expected(x: u32, y: u32, z: u32) -> u32 {
     let (g, t) = ([x, y, z], BLOCK);
     let (mut w, mut shift) = (0, 0);
@@ -122,7 +122,6 @@ pub fn expected(x: u32, y: u32, z: u32) -> u32 {
 }
 
 /// Cells in the launch, and the dispatch shape that covers it.
-#[allow(dead_code)]
 pub fn cells() -> usize {
     (0..3).map(|a| (BLOCK[a] * GRID[a]) as usize).product()
 }

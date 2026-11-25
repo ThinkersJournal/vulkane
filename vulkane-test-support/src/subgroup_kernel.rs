@@ -9,6 +9,7 @@ use unpopped::ir::ScalarExpr as E;
 use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt};
 use unpopped_vocab::ElementKind::U32;
 
+/// Threads per workgroup.
 pub const BLOCK: u32 = 128;
 
 fn c(v: i64) -> E {
@@ -53,7 +54,6 @@ pub fn subgroup_kernel(min: u32, max: u32) -> KernelFn {
     k
 }
 
-#[allow(dead_code, reason = "the WGSL test only needs the kernel")]
 /// What thread `t` must store when the device runs subgroups of `size` lanes.
 pub fn expected(t: u32, size: u32) -> u32 {
     t % size + 256 * (t / size) + 65536 * size

@@ -17,7 +17,7 @@ pub(crate) use vulkane_test_support::reverse_kernel;
 
 /// The block-reverse kernel over `N` threads with a static shared array.
 fn reverse(with_barrier: bool) -> KernelFn {
-    reverse_kernel::reverse(N, with_barrier, false)
+    reverse_kernel::reverse(N, with_barrier, reverse_kernel::SharedLen::Static)
 }
 
 fn tid() -> E {

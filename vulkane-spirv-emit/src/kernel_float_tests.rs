@@ -62,7 +62,11 @@ fn every_float_multiply_and_add_is_no_contraction() {
 /// find them in the float kernel above.
 #[test]
 fn an_integer_kernel_declares_no_float_control() {
-    let k = crate::kernel_tests::reverse_kernel::reverse(64, true, false);
+    let k = crate::kernel_tests::reverse_kernel::reverse(
+        64,
+        true,
+        crate::kernel_tests::reverse_kernel::SharedLen::Static,
+    );
     let g = SpirV.lower_kernel(&k).expect("lowers");
     for needle in [
         "DenormPreserve",

@@ -31,7 +31,7 @@ fn reverse(with_barrier: bool) -> GeneratedKernel {
     lower(&reverse_kernel::reverse(
         WORKGROUP_SIZE,
         with_barrier,
-        false,
+        reverse_kernel::SharedLen::Static,
     ))
 }
 
@@ -135,7 +135,7 @@ fn a_barrier_under_divergent_control_is_declined_before_any_text_is_written() {
         Box::new(E::Exec(unpopped::exec::ExecId::ThreadIdx(0))),
         Box::new(E::ConstInt(0, unpopped_vocab::ElementKind::U32)),
     );
-    let mut k = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut k = reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     k.body.0.insert(
         3,
         Stmt::If {
@@ -237,7 +237,11 @@ fn a_block_reversed_through_a_specialization_sized_array_is_exact_on_a_device() 
     let Some(gpu) = gpu::Gpu::open("wgsl_kernel_dynamic") else {
         return;
     };
-    let k = lower(&reverse_kernel::reverse(WORKGROUP_SIZE, true, true));
+    let k = lower(&reverse_kernel::reverse(
+        WORKGROUP_SIZE,
+        true,
+        reverse_kernel::SharedLen::Spec,
+    ));
     assert!(k.source.contains("@id(2) override"), "{}", k.source);
     let input: Vec<u32> = (0..WORKGROUP_SIZE).map(|i| i * 7 + 1).collect();
     let want: Vec<u32> = input.iter().rev().copied().collect();
@@ -275,7 +279,8 @@ fn a_constant_allocation_is_a_typed_decline() {
 fn what_wgsl_cannot_say_is_a_typed_decline_naming_it() {
     use unpopped::exec::Scope;
     use unpopped::kernel::{BarrierKind, MemoryOrder, Stmt};
-    let mut fence = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut fence =
+        reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     fence.body.0.insert(
         3,
         Stmt::Fence {
@@ -285,7 +290,8 @@ fn what_wgsl_cannot_say_is_a_typed_decline_naming_it() {
     );
     declined(&fence, "Fence");
 
-    let mut subgroup = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut subgroup =
+        reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     subgroup.body.0.insert(
         3,
         Stmt::Barrier {
@@ -295,7 +301,8 @@ fn what_wgsl_cannot_say_is_a_typed_decline_naming_it() {
     );
     declined(&subgroup, "Barrier");
 
-    let mut float = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut float =
+        reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     float.compute = unpopped_vocab::ElementKind::F32;
     declined(&float, "a F32 kernel is not lowered");
 }

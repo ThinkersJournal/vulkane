@@ -58,9 +58,18 @@ fn consume(n: u32) -> Vec<Stmt> {
     ]
 }
 
-/// The block-reverse kernel over `n` threads. `dynamic`: the shared array is sized by scalar
+/// How the reverse kernel's shared array is sized.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SharedLen {
+    /// The static length `n`.
+    Static,
+    /// By scalar parameter 2 (local 4), a specialization constant.
+    Spec,
+}
+
+/// The block-reverse kernel over `n` threads. `extent`: the shared array is sized by scalar
 /// parameter 2 (local 4), a specialization constant, instead of the static `n`.
-pub fn reverse(n: u32, with_barrier: bool, dynamic: bool) -> KernelFn {
+pub fn reverse(n: u32, with_barrier: bool, extent: SharedLen) -> KernelFn {
     let mut body = produce();
     if with_barrier {
         body.push(Stmt::Barrier {
@@ -81,7 +90,7 @@ pub fn reverse(n: u32, with_barrier: bool, dynamic: bool) -> KernelFn {
         Block(body),
     );
     k.launch = Some(LaunchShape::new([n, 1, 1], [1, 1, 1]));
-    let extent = if dynamic {
+    let extent = if extent == SharedLen::Spec {
         k.params.push(Param::scalar("n", U32, 4));
         k.locals.push(LocalDecl::scalar(U32));
         Extent::Param(4)

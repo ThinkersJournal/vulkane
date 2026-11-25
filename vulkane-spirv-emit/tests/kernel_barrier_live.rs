@@ -22,7 +22,15 @@ use vulkane_spirv_emit::{SpirV, WORKGROUP_SIZE};
 
 fn run(gpu: &gpu::Gpu, with_barrier: bool, dynamic: bool, input: &[u32]) -> Vec<u32> {
     let g = SpirV
-        .lower_kernel(&reverse(WORKGROUP_SIZE, with_barrier, dynamic))
+        .lower_kernel(&reverse(
+            WORKGROUP_SIZE,
+            with_barrier,
+            if dynamic {
+                reverse_kernel::SharedLen::Spec
+            } else {
+                reverse_kernel::SharedLen::Static
+            },
+        ))
         .expect("the SPIR-V backend lowers the reverse kernel");
     let words = g.words().expect("words").to_vec();
     // SpecId 2 is the scalar parameter's index; the extent is fixed per pipeline.

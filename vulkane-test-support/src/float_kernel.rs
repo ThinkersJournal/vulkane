@@ -10,6 +10,7 @@ use unpopped::ir::{ArithOp, BinaryOp, ScalarExpr as E, UnaryOp};
 use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt};
 use unpopped_vocab::ElementKind;
 
+/// Threads launched.
 pub const THREADS: u32 = 256;
 
 /// The expression under test.
@@ -38,20 +39,20 @@ fn at(buffer: u32) -> Place {
     }
 }
 
-fn bx(e: E) -> Box<E> {
-    Box::new(e)
-}
-
+/// The kernel applying `case` over `ty` to two input buffers.
 pub fn float_kernel(ty: ElementKind, case: Case) -> KernelFn {
     let (a, b) = (E::Local(0), E::Local(1));
     let value = match case {
-        Case::MulAdd => E::Add(bx(E::Mul(bx(a.clone()), bx(b))), bx(a)),
-        Case::Max => E::Binary(BinaryOp::Max, bx(a), bx(b)),
-        Case::Min => E::Binary(BinaryOp::Min, bx(a), bx(b)),
-        Case::Floor => E::Unary(UnaryOp::Floor, bx(a)),
-        Case::Div => E::Div(bx(a), bx(b)),
-        Case::Sqrt => E::Unary(UnaryOp::Sqrt, bx(a)),
-        Case::Exp => E::Unary(UnaryOp::Exp, bx(a)),
+        Case::MulAdd => E::Add(
+            Box::new(E::Mul(Box::new(a.clone()), Box::new(b))),
+            Box::new(a),
+        ),
+        Case::Max => E::Binary(BinaryOp::Max, Box::new(a), Box::new(b)),
+        Case::Min => E::Binary(BinaryOp::Min, Box::new(a), Box::new(b)),
+        Case::Floor => E::Unary(UnaryOp::Floor, Box::new(a)),
+        Case::Div => E::Div(Box::new(a), Box::new(b)),
+        Case::Sqrt => E::Unary(UnaryOp::Sqrt, Box::new(a)),
+        Case::Exp => E::Unary(UnaryOp::Exp, Box::new(a)),
     };
     let _ = ArithOp::Add;
     let body = vec![

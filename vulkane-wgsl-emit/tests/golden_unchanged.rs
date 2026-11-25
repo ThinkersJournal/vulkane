@@ -17,9 +17,18 @@ use vulkane_wgsl_emit::Wgsl;
 fn kernels() -> Vec<(&'static str, KernelFn)> {
     let n = WORKGROUP_SIZE;
     vec![
-        ("reverse_barrier", reverse_kernel::reverse(n, true, false)),
-        ("reverse_racy", reverse_kernel::reverse(n, false, false)),
-        ("reverse_dynamic", reverse_kernel::reverse(n, true, true)),
+        (
+            "reverse_barrier",
+            reverse_kernel::reverse(n, true, reverse_kernel::SharedLen::Static),
+        ),
+        (
+            "reverse_racy",
+            reverse_kernel::reverse(n, false, reverse_kernel::SharedLen::Static),
+        ),
+        (
+            "reverse_dynamic",
+            reverse_kernel::reverse(n, true, reverse_kernel::SharedLen::Spec),
+        ),
         ("flow", flow_kernel::flow_kernel()),
         ("grid", grid_kernel::grid_kernel()),
         (

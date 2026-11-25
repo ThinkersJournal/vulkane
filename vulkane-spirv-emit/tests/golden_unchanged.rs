@@ -19,8 +19,14 @@ use vulkane_spirv_emit::{SpirV, WORKGROUP_SIZE};
 fn kernels() -> Vec<(&'static str, KernelFn)> {
     let n = WORKGROUP_SIZE;
     vec![
-        ("reverse_barrier", reverse_kernel::reverse(n, true, false)),
-        ("reverse_dynamic", reverse_kernel::reverse(n, true, true)),
+        (
+            "reverse_barrier",
+            reverse_kernel::reverse(n, true, reverse_kernel::SharedLen::Static),
+        ),
+        (
+            "reverse_dynamic",
+            reverse_kernel::reverse(n, true, reverse_kernel::SharedLen::Spec),
+        ),
         ("flow", flow_kernel::flow_kernel()),
         ("grid", grid_kernel::grid_kernel()),
         ("atomic", atomic_kernel::atomic_kernel(false)),
