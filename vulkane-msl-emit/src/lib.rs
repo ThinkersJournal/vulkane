@@ -25,9 +25,12 @@
 //! `MemoryOrder` collapses to the strongest**, stronger than asked, never weaker.
 //!
 //! `F32` kernels lower through `float.rs`: `#pragma METAL fp math_mode(safe)` and `contract(off)` (Metal 3.2;
-//! fast math is Metal's default and would flush denormals and fuse multiply-add), every operation pinned in a
+//! fast math is Metal's default: no NaN, INF or signed zeros, reassociation and fusion allowed; `safe` leaves FP
+//! contraction *on*, hence `contract(off)` as well), every operation pinned in a
 //! `const` temporary, the exact unary ops only (`rint` for round-half-even), NaN-propagating max/min, and
-//! guarded float-to-integer conversions. Text pinned, **not compiled** (no Metal compiler in CI).
+//! guarded float-to-integer conversions. Text pinned, **not compiled** (no Metal compiler in CI). Subnormal handling and
+//! the rounding mode are the device's (MSL 8.1, 8.2: denormals "may be flushed to zero"; "either round ties to even
+//! or round toward zero ... may be supported"): no pragma makes a Metal float kernel bit-exact IEEE.
 //!
 //! Atomics (`AtomicRmw` Add/Min/Max/And/Or/Xor/Exchange, `AtomicCas`) on `I32`/`U32` buffers and `threadgroup` arrays: the
 //! target is declared `atomic_int`/`atomic_uint`, every access is `atomic_*_explicit` with `memory_order_relaxed`, and the
