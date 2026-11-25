@@ -149,6 +149,31 @@ fn declined(k: &KernelFn, needle: &str) {
     }
 }
 
+/// Row 9e: predicated access through GLSL on a device. The masked-off lanes' index is out of range, so a load that
+/// ran would fault or read zero (not `FILL`), and the masked-off store must leave the plain store's value.
+#[test]
+fn masked_access_skips_the_memory_where_the_mask_is_false_on_a_device() {
+    use vulkane_test_support::masked_kernel;
+    common::require_serialization_lock();
+    let Some(gpu) = gpu::Gpu::open("glsl_kernel_masked") else {
+        return;
+    };
+    let k = lower(&masked_kernel::masked_kernel());
+    let Some(words) = glslang_words(&k) else {
+        return;
+    };
+    let got = gpu.run("main", &words, &[&masked_kernel::input()]);
+    for (t, &w) in got.iter().enumerate() {
+        let want = masked_kernel::expected(t as u32);
+        assert_eq!(
+            w, want,
+            "thread {t}
+{}",
+            k.source
+        );
+    }
+}
+
 /// Row 8d: 1024 contended atomic updates through GLSL; the atomic kernel is exact and the plain
 /// load/add/store control loses updates on the same device (reported, not asserted).
 #[test]
@@ -334,6 +359,48 @@ fn the_subgroup_kernel_spells_the_builtins_and_the_extension() {
 }
 
 /// A range no Vulkan device can have is refused by name (the control lowers).
+/// ROADMAP 9e: a masked access is a guarded access, so the element is not touched where the mask is false.
+#[test]
+fn masked_access_is_an_if_around_the_access_and_the_fill_is_the_else_branch() {
+    use vulkane_test_support::masked_kernel;
+    let src = lower(&masked_kernel::masked_kernel()).source;
+    let lines: Vec<&str> = src.lines().map(str::trim).collect();
+    let at = |pred: &dyn Fn(&str) -> bool, what: &str| {
+        lines.iter().position(|l| pred(l)).unwrap_or_else(|| {
+            panic!(
+                "{what} missing:
+{src}"
+            )
+        })
+    };
+    // The load of `a` is the assignment to `l1` between an `if` line and its `} else {`; the fill follows the else.
+    let load = at(&|l| l.starts_with("l1 = "), "the assignment to l1");
+    let guard = lines[..load]
+        .iter()
+        .rposition(|l| l.starts_with("if "))
+        .expect("an if before the load");
+    let els = at(&|l| l.contains("} else {"), "the else");
+    assert!(guard < load && load < els, "{src}");
+    assert!(
+        lines[els + 1].starts_with("l1 = ") && lines[els + 1].contains('7'),
+        "{src}"
+    );
+    // The masked store (value `l1 + 5`) is inside its own `if`, with no else, after the load's.
+    let store = at(&|l| l.contains("+ 5"), "the masked store value");
+    let sguard = lines[..store]
+        .iter()
+        .rposition(|l| l.starts_with("if "))
+        .expect("an if before the store");
+    assert!(
+        sguard > els,
+        "the store has its own guard after the load's: {src}"
+    );
+    assert_eq!(
+        masked_kernel::THREADS - masked_kernel::VALID,
+        masked_kernel::SHIFT
+    );
+}
+
 #[test]
 fn a_subgroup_range_no_device_can_have_is_a_typed_decline() {
     for (min, max) in [(256, 512), (3, 3), (5, 7)] {

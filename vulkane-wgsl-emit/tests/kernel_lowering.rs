@@ -220,6 +220,28 @@ fn a_non_cubic_3d_launch_writes_every_cell_its_own_ids_on_a_device() {
     }
 }
 
+/// Row 9e: predicated access through WGSL on a device. The masked-off lanes' index is out of range, so a load that
+/// ran would fault or read zero (not `FILL`), and the masked-off store must leave the plain store's value.
+#[test]
+fn masked_access_skips_the_memory_where_the_mask_is_false_on_a_device() {
+    use vulkane_test_support::masked_kernel;
+    common::require_serialization_lock();
+    let Some(gpu) = gpu::Gpu::open("wgsl_kernel_masked") else {
+        return;
+    };
+    let k = lower(&masked_kernel::masked_kernel());
+    let got = gpu.run(&k.name, &words(&k), &[&masked_kernel::input()]);
+    for (t, &w) in got.iter().enumerate() {
+        let want = masked_kernel::expected(t as u32);
+        assert_eq!(
+            w, want,
+            "thread {t}
+{}",
+            k.source
+        );
+    }
+}
+
 fn declined(k: &KernelFn, needle: &str) {
     match Wgsl.lower_kernel(k) {
         Err(LowerError::UnsupportedKernel { detail }) => {
@@ -419,6 +441,48 @@ fn a_stronger_order_or_a_subgroup_scope_is_a_typed_decline() {
 /// Row 8c: the subgroup ids need WGSL `enable subgroups;`, which naga 30 (this emitter's validity
 /// oracle) rejects as "not yet implemented", so a kernel reading them is a typed decline naming the
 /// id; the probe below pins the reason so the decline is lifted when naga accepts it.
+/// ROADMAP 9e: a masked access is a guarded access, so the element is not touched where the mask is false.
+#[test]
+fn masked_access_is_an_if_around_the_access_and_the_fill_is_the_else_branch() {
+    use vulkane_test_support::masked_kernel;
+    let src = lower(&masked_kernel::masked_kernel()).source;
+    let lines: Vec<&str> = src.lines().map(str::trim).collect();
+    let at = |pred: &dyn Fn(&str) -> bool, what: &str| {
+        lines.iter().position(|l| pred(l)).unwrap_or_else(|| {
+            panic!(
+                "{what} missing:
+{src}"
+            )
+        })
+    };
+    // The load of `a` is the assignment to `l1` between an `if` line and its `} else {`; the fill follows the else.
+    let load = at(&|l| l.starts_with("l1 = "), "the assignment to l1");
+    let guard = lines[..load]
+        .iter()
+        .rposition(|l| l.starts_with("if "))
+        .expect("an if before the load");
+    let els = at(&|l| l.contains("} else {"), "the else");
+    assert!(guard < load && load < els, "{src}");
+    assert!(
+        lines[els + 1].starts_with("l1 = ") && lines[els + 1].contains('7'),
+        "{src}"
+    );
+    // The masked store (value `l1 + 5`) is inside its own `if`, with no else, after the load's.
+    let store = at(&|l| l.contains("+ 5"), "the masked store value");
+    let sguard = lines[..store]
+        .iter()
+        .rposition(|l| l.starts_with("if "))
+        .expect("an if before the store");
+    assert!(
+        sguard > els,
+        "the store has its own guard after the load's: {src}"
+    );
+    assert_eq!(
+        masked_kernel::THREADS - masked_kernel::VALID,
+        masked_kernel::SHIFT
+    );
+}
+
 #[test]
 fn the_subgroup_ids_are_a_typed_decline_while_naga_rejects_enable_subgroups() {
     match Wgsl.lower_kernel(&subgroup_kernel::subgroup_kernel(1, 128)) {

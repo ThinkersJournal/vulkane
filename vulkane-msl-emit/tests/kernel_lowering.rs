@@ -470,6 +470,48 @@ fn an_atomic_beside_a_narrow_buffer_is_declined() {
     assert!(d.contains("8- or 16-bit"), "{d}");
 }
 
+/// ROADMAP 9e: a masked access is a guarded access, so the element is not touched where the mask is false.
+#[test]
+fn masked_access_is_an_if_around_the_access_and_the_fill_is_the_else_branch() {
+    use vulkane_test_support::masked_kernel;
+    let src = text(&masked_kernel::masked_kernel());
+    let lines: Vec<&str> = src.lines().map(str::trim).collect();
+    let at = |pred: &dyn Fn(&str) -> bool, what: &str| {
+        lines.iter().position(|l| pred(l)).unwrap_or_else(|| {
+            panic!(
+                "{what} missing:
+{src}"
+            )
+        })
+    };
+    // The load of `a` is the assignment to `l1` between an `if` line and its `} else {`; the fill follows the else.
+    let load = at(&|l| l.starts_with("l1 = "), "the assignment to l1");
+    let guard = lines[..load]
+        .iter()
+        .rposition(|l| l.starts_with("if "))
+        .expect("an if before the load");
+    let els = at(&|l| l.contains("} else {"), "the else");
+    assert!(guard < load && load < els, "{src}");
+    assert!(
+        lines[els + 1].starts_with("l1 = ") && lines[els + 1].contains('7'),
+        "{src}"
+    );
+    // The masked store (value `l1 + 5`) is inside its own `if`, with no else, after the load's.
+    let store = at(&|l| l.contains("+ 5"), "the masked store value");
+    let sguard = lines[..store]
+        .iter()
+        .rposition(|l| l.starts_with("if "))
+        .expect("an if before the store");
+    assert!(
+        sguard > els,
+        "the store has its own guard after the load's: {src}"
+    );
+    assert_eq!(
+        masked_kernel::THREADS - masked_kernel::VALID,
+        masked_kernel::SHIFT
+    );
+}
+
 #[test]
 fn the_plan_path_is_declined() {
     assert_eq!(Msl.name(), "msl");
