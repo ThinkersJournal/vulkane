@@ -11,7 +11,10 @@ use crate::tests::assert_valid;
 use crate::{SpirV, required_features};
 
 #[path = "../tests/support/float_kernel.rs"]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared test module: each test binary compiles it whole but uses part of it"
+)]
 pub(crate) mod float_kernel;
 use float_kernel::{Case, float_kernel};
 
