@@ -26,7 +26,6 @@ vulkane-test-support = { path = "../vulkane-test-support" }
 # The live-device test opens a device through the safe wrapper (and its shared `tests/common`).
 vulkane = { path = "../vulkane" }
 vulkane-spirv-emit = { path = "../vulkane-spirv-emit" }
-tempfile = { workspace = true }
 
 [lints.rust]
 missing_docs                  = "deny"

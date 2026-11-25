@@ -2094,7 +2094,6 @@ dependencies = [
 name = "vulkane-glsl-emit"
 version = "0.30.2"
 dependencies = [
- "tempfile",
  "unpopped",
  "unpopped-vocab",
  "vulkane",
@@ -2197,7 +2196,6 @@ name = "vulkane-wgsl-emit"
 version = "0.30.2"
 dependencies = [
  "naga",
- "tempfile",
  "unpopped",
  "unpopped-cpu-c",
  "unpopped-vocab",
