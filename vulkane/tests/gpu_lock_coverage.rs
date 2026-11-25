@@ -101,6 +101,15 @@ const GUARDED_HELPERS: &[&str] = &[
     "create_device_on(",
 ];
 
+/// The shared helpers moved from `tests/vulkane-test-support/src/common.rs` to the `vulkane-test-support` crate (ROADMAP 8n).
+fn common_source() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("vulkane-test-support")
+        .join("src")
+        .join("common.rs")
+}
+
 fn tests_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests")
 }
@@ -316,19 +325,19 @@ fn unguarded_device_acquisitions_do_not_increase() {
 /// rather than a comment on the constant.
 #[test]
 fn the_guarded_helpers_still_call_the_guard() {
-    let common = tests_dir().join("common").join("mod.rs");
+    let common = common_source();
     let src = std::fs::read_to_string(&common)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", common.display()));
 
     assert!(
         src.contains("fn require_serialization_lock"),
-        "common/mod.rs no longer defines `require_serialization_lock`; every \
+        "vulkane-test-support/src/common.rs no longer defines `require_serialization_lock`; every \
          file this scan counts as guarded would silently become unguarded, and \
          the site count would not move."
     );
     assert!(
         src.contains("require_serialization_lock();"),
-        "common/mod.rs defines `require_serialization_lock` but never calls it. \
+        "vulkane-test-support/src/common.rs defines `require_serialization_lock` but never calls it. \
          The helpers this scan treats as guarded would be guarded in name only \
          — and the budget above would keep reporting the same number while \
          meaning something entirely different."
@@ -343,7 +352,7 @@ fn the_guarded_helpers_still_call_the_guard() {
 /// guarded.
 #[test]
 fn every_common_helper_that_acquires_a_device_is_listed() {
-    let common = tests_dir().join("common").join("mod.rs");
+    let common = common_source();
     let src = std::fs::read_to_string(&common)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", common.display()));
 
@@ -360,7 +369,7 @@ fn every_common_helper_that_acquires_a_device_is_listed() {
         let hint = format!("{name}(");
         assert!(
             GUARDED_HELPERS.iter().any(|h| *h == hint),
-            "common/mod.rs exposes `{name}`, whose signature mentions a device \
+            "vulkane-test-support/src/common.rs exposes `{name}`, whose signature mentions a device \
              or instance, but GUARDED_HELPERS does not list it.\n\n\
              A caller routing through it would be counted as UNGUARDED by this \
              scan (a false alarm), or — if it does not call \
@@ -372,7 +381,7 @@ fn every_common_helper_that_acquires_a_device_is_listed() {
 
     // POSITIVE CONTROL. Without this the test passes when it finds NOTHING, and
     // finding nothing is exactly what it did: every device helper in
-    // `common/mod.rs` has a multi-line signature, and the first version matched
+    // `vulkane-test-support/src/common.rs` has a multi-line signature, and the first version matched
     // only single lines. It examined zero helpers and reported ok — the same
     // null-without-a-control shape as the scanner it guards.
     assert!(
@@ -388,7 +397,7 @@ fn every_common_helper_that_acquires_a_device_is_listed() {
 /// `(name, whole signature)` for each `pub fn` in a source file.
 ///
 /// Joins from `pub fn` to the opening `{`, because **every device helper in
-/// `common/mod.rs` has a multi-line signature** — `compute_device`,
+/// `vulkane-test-support/src/common.rs` has a multi-line signature** — `compute_device`,
 /// `instance_and_devices`, `first_compute` and `create_device_on` all wrap their
 /// parameters, so a line-at-a-time match sees none of them and the caller
 /// silently examines an empty set.
