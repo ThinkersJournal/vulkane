@@ -24,15 +24,22 @@
 //! is `atomic_thread_fence` at threadgroup or device scope with `memory_order_seq_cst`: **every
 //! `MemoryOrder` collapses to the strongest**, stronger than asked, never weaker.
 //!
+//! `F32` kernels lower through `float.rs`: `#pragma METAL fp math_mode(safe)` and `contract(off)` (Metal 3.2;
+//! fast math is Metal's default and would flush denormals and fuse multiply-add), every operation pinned in a
+//! `const` temporary, the exact unary ops only (`rint` for round-half-even), NaN-propagating max/min, and
+//! guarded float-to-integer conversions. Text pinned, **not compiled** (no Metal compiler in CI).
+//!
 //! ## Declined by name
 //!
-//! Float, 64-bit, 8/16-bit integer and vector kernels, atomics, scalar parameters, subgroup and
+//! `F64` (Metal has no `double`), `Div`, `Sqrt` and the transcendentals (looser bound than the contract tier), other
+//! 64-bit, 8/16-bit integer and vector kernels, atomics, scalar parameters, subgroup and
 //! `BlockDim`/`GridDim` ids, and a `Barrier` or `Fence` at a scope other than block (and device for a
 //! fence): each a typed `UnsupportedKernel` from the shared walker naming it. The twelve NVIDIA-only
 //! statements of board 434 C are refused by name first. The plan path (`Backend::lower`) is not
 //! implemented.
 
 mod dialect;
+mod float;
 
 use unpopped::backend::{Backend, DtypeSupport, GeneratedKernel, LowerError};
 use unpopped::kernel::{KernelFn, ParamKind};
@@ -50,7 +57,7 @@ impl Backend for Msl {
     }
     fn supports_dtype(&self, dtype: ElementKind, _target: TargetId) -> DtypeSupport {
         match dtype {
-            ElementKind::I32 | ElementKind::U32 => DtypeSupport::Supported,
+            ElementKind::I32 | ElementKind::U32 | ElementKind::F32 => DtypeSupport::Supported,
             _ => DtypeSupport::Unsupported,
         }
     }
@@ -74,6 +81,9 @@ impl Backend for Msl {
                     kernel.name
                 ),
             });
+        }
+        if kernel.compute == ElementKind::F32 {
+            return vulkane_kernel_text::lower_kernel(&float::MslFloat, kernel);
         }
         vulkane_kernel_text::lower_kernel(&Msl, kernel)
     }
