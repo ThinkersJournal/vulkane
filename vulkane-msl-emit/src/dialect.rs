@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! The MSL spellings the shared walker asks for.
 
+use std::cell::Cell;
 use std::fmt::Write;
 
 use unpopped::exec::{ExecId, Scope};
@@ -8,9 +9,62 @@ use unpopped::ir::BinaryOp;
 use unpopped::kernel::{AtomicOp, BufferRole, MemoryOrder};
 use vulkane_kernel_text::{BIT_OPS, COMPARISONS, Dialect, Layout, operator};
 
-/// The MSL dialect of [`vulkane_kernel_text::lower_kernel`].
+/// The MSL backend of Unpopped: [`Backend::lower_kernel`](unpopped::backend::Backend::lower_kernel) is the entry point.
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Msl;
+
+/// The built-in ids a kernel body read (`BlockDim` and `GridDim` never reach the dialect: the walker folds them to launch
+/// constants), so the signature declares exactly those (a bit per id). The walker lowers the
+/// body before it asks for the prologue, so a spelling asked for here is known by then.
+#[derive(Debug, Default)]
+pub(crate) struct Ids(Cell<u8>);
+
+const LANE: u8 = 1;
+const SUBGROUP: u8 = 2;
+const SIZE: u8 = 4;
+
+impl Ids {
+    /// The spelling of an execution id (marking it for the signature), or `None` when MSL has none.
+    pub(crate) fn exec(&self, id: ExecId, signed: bool) -> Option<String> {
+        let (bit, name) = match id {
+            ExecId::ThreadIdx(a) => (0, format!("tid.{}", axis(a)?)),
+            ExecId::BlockIdx(a) => (0, format!("gid.{}", axis(a)?)),
+            ExecId::LaneId => (LANE, "lane".to_string()),
+            ExecId::SubgroupId => (SUBGROUP, "sgid".to_string()),
+            ExecId::SubgroupSize => (SIZE, "sgsize".to_string()),
+            _ => return None,
+        };
+        self.0.set(self.0.get() | bit);
+        Some(if signed {
+            format!("((int){name})")
+        } else {
+            name
+        })
+    }
+
+    /// The extra signature parameters (each preceded by `,`) for the ids the body read.
+    pub(crate) fn params(&self) -> String {
+        let used = self.0.get();
+        let mut s = String::new();
+        for (bit, decl) in [
+            (LANE, "uint lane [[thread_index_in_simdgroup]]"),
+            (SUBGROUP, "uint sgid [[simdgroup_index_in_threadgroup]]"),
+            (SIZE, "uint sgsize [[threads_per_simdgroup]]"),
+        ] {
+            if used & bit != 0 {
+                let _ = write!(s, ",\n    {decl}");
+            }
+        }
+        s
+    }
+}
+
+/// The MSL dialect of [`vulkane_kernel_text::lower_kernel`] for `I32`/`U32` kernels.
+#[derive(Debug, Default)]
+pub(crate) struct IntKernel {
+    /// The built-in ids the body read.
+    pub(crate) ids: Ids,
+}
 
 fn ty(signed: bool) -> &'static str {
     if signed { "int" } else { "uint" }
@@ -35,9 +89,14 @@ pub(crate) fn axis(a: u8) -> Option<char> {
 
 /// The workgroup-and-buffer barrier, at block scope only.
 pub(crate) fn barrier(scope: Scope) -> Option<String> {
-    (scope == Scope::Block).then(|| {
-        "threadgroup_barrier(mem_flags::mem_threadgroup | mem_flags::mem_device);".to_string()
-    })
+    let call = match scope {
+        Scope::Block => "threadgroup_barrier",
+        Scope::Subgroup => "simdgroup_barrier",
+        _ => return None,
+    };
+    Some(format!(
+        "{call}(mem_flags::mem_threadgroup | mem_flags::mem_device);"
+    ))
 }
 
 /// A fence at block or device scope; every order collapses to `memory_order_seq_cst`.
@@ -52,7 +111,7 @@ pub(crate) fn fence(scope: Scope, _order: MemoryOrder) -> Option<String> {
     ))
 }
 
-impl Dialect for Msl {
+impl Dialect for IntKernel {
     fn name(&self) -> &'static str {
         "msl"
     }
@@ -80,7 +139,9 @@ impl Dialect for Msl {
             );
         }
         s.push_str("    uint3 tid [[thread_position_in_threadgroup]],\n");
-        s.push_str("    uint3 gid [[threadgroup_position_in_grid]])\n{\n");
+        s.push_str("    uint3 gid [[threadgroup_position_in_grid]]");
+        s.push_str(&self.ids.params());
+        s.push_str(")\n{\n");
         for a in &layout.shared {
             let class = if a.private { "" } else { "threadgroup " };
             let _ = writeln!(
@@ -115,13 +176,7 @@ impl Dialect for Msl {
     }
 
     fn exec(&self, id: ExecId, signed: bool) -> Option<String> {
-        let (var, a) = match id {
-            ExecId::ThreadIdx(a) => ("tid", a),
-            ExecId::BlockIdx(a) => ("gid", a),
-            _ => return None,
-        };
-        let v = format!("{var}.{}", axis(a)?);
-        Some(if signed { format!("((int){v})") } else { v })
+        self.ids.exec(id, signed)
     }
 
     fn binary(&self, op: BinaryOp, a: &str, b: &str, signed: bool) -> Option<String> {
