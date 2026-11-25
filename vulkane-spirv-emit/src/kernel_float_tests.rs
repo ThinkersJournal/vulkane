@@ -50,8 +50,8 @@ fn a_float_kernel_declares_ieee_controls_and_float64_only_at_f64() {
     }
 }
 
-/// Every `OpFMul`/`OpFAdd` carries `NoContraction` (so no driver fuses them into an FMA the oracle
-/// does not do, fuel#568). Control: the same query counts the two arithmetic ops themselves.
+/// Every `OpFMul`/`OpFAdd` carries `NoContraction` (so no driver fuses them into an FMA the source
+/// does not ask for, fuel#568). Control: the same query counts the two arithmetic ops themselves.
 #[test]
 fn every_float_multiply_and_add_is_no_contraction() {
     let g = SpirV
@@ -104,4 +104,58 @@ fn ops_whose_vulkan_bound_is_looser_than_the_contract_tier_are_declined_by_name(
             .lower_kernel(&float_kernel(F32, case))
             .expect("lowers");
     }
+}
+
+#[path = "../tests/support/float_flow_kernel.rs"]
+#[allow(dead_code)]
+mod float_flow_kernel;
+
+/// `If`, `While` and `For` in a float kernel give valid modules for both counter types, with the
+/// multiply and the add still `NoContraction`.
+#[test]
+fn float_control_flow_lowers_to_valid_modules_for_both_counters() {
+    for counter in [
+        unpopped_vocab::ElementKind::U32,
+        unpopped_vocab::ElementKind::I32,
+    ] {
+        let g = SpirV
+            .lower_kernel(&float_flow_kernel::float_flow_kernel(counter))
+            .expect("lowers");
+        assert_valid(&g);
+        let s = &g.source;
+        // Two multiplies (`y * w` in the test and in the add), the add and the subtract, and the
+        // final halving multiply: every float add, subtract and multiply is decorated.
+        let arith = count(s, "OpFMul") + count(s, "OpFAdd") + count(s, "OpFSub");
+        assert_eq!(count(s, "NoContraction"), arith, "{counter:?}\n{s}");
+        assert!(arith >= 4, "{arith}");
+        assert!(
+            s.contains("OpLoopMerge") && s.contains("OpSelectionMerge"),
+            "{s}"
+        );
+    }
+}
+
+/// An integer comparison in a float kernel has no spelling (the shared `lower_dag` has no integer
+/// seam here): a typed decline, never a module that compares integers as floats.
+#[test]
+fn an_integer_condition_in_a_float_kernel_is_a_typed_decline() {
+    use unpopped::ir::{BinaryOp, ScalarExpr as E};
+    use unpopped::kernel::Stmt;
+    let mut k = float_flow_kernel::float_flow_kernel(unpopped_vocab::ElementKind::U32);
+    let Stmt::For { body, .. } = &mut k.body.0[2] else {
+        panic!("the third statement is the loop");
+    };
+    let Stmt::If { cond, .. } = &mut body.0[1] else {
+        panic!("the second loop statement is the first `if`");
+    };
+    *cond = E::Binary(
+        BinaryOp::CmpLt,
+        Box::new(E::Local(3)),
+        Box::new(E::ConstInt(2, unpopped_vocab::ElementKind::U32)),
+    );
+    let err = SpirV.lower_kernel(&k).expect_err("declined");
+    assert!(
+        format!("{err:?}").contains("not lowered") || format!("{err:?}").contains("Integer"),
+        "{err:?}"
+    );
 }

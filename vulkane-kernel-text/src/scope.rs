@@ -14,11 +14,15 @@ use crate::dialect::{Decl, Dialect, Layout};
 #[derive(Debug)]
 pub(crate) struct Scope {
     pub(crate) signed: bool,
+    /// An `F32` or `F64` kernel (`signed` is then false and only used for the execution ids).
+    pub(crate) float: bool,
     pub(crate) block: [u32; 3],
     pub(crate) grid: [u32; 3],
     pub(crate) buffers: Vec<Decl>,
     pub(crate) shared: Vec<Decl>,
     pub(crate) subgroup: bool,
+    /// The widths of the rounding float conversions the body did (filled while it is written).
+    pub(crate) rte: std::cell::RefCell<BTreeSet<u32>>,
     /// The names (`b0`, `a1`) of the buffers and arrays that are atomically typed.
     pub(crate) atomic: BTreeSet<String>,
     pub(crate) backend: &'static str,
@@ -46,30 +50,55 @@ impl Scope {
                 .filter_map(|b| b.spec_local.map(|l| (l, b.name.clone())))
                 .collect(),
             locals: kernel.locals.len(),
+            local_elems: kernel.locals.iter().map(|l| l.elem).collect(),
+            rte: self.rte.borrow().iter().copied().collect(),
             subgroup: self.subgroup,
         }
     }
 }
 
-/// The dtype of the kernel: `I32` or `U32`.
-fn dtype(d: &dyn Dialect, kernel: &KernelFn) -> Result<bool, LowerError> {
+/// The dtype of the kernel: `(signed, float)`.
+fn dtype(d: &dyn Dialect, kernel: &KernelFn) -> Result<(bool, bool), LowerError> {
     match kernel.compute {
-        ElementKind::I32 => Ok(true),
-        ElementKind::U32 => Ok(false),
-        ElementKind::I64 if d.wide() => Ok(true),
-        ElementKind::U64 if d.wide() => Ok(false),
+        ElementKind::I32 => Ok((true, false)),
+        ElementKind::U32 => Ok((false, false)),
+        ElementKind::I64 if d.wide() => Ok((true, false)),
+        ElementKind::U64 if d.wide() => Ok((false, false)),
+        ElementKind::F32 if d.float() && !d.double() => Ok((false, true)),
+        ElementKind::F64 if d.float() && d.double() => Ok((false, true)),
         other => Err(refuse(
             d.name(),
             kernel,
-            if matches!(other, ElementKind::I64 | ElementKind::U64) {
+            if let Some(why) = d.float_refusal().filter(|_| {
+                matches!(
+                    other,
+                    ElementKind::F16 | ElementKind::Bf16 | ElementKind::F32 | ElementKind::F64
+                )
+            }) {
+                format!("a {other:?} kernel is not lowered: {why}")
+            } else if matches!(other, ElementKind::I64 | ElementKind::U64) {
                 format!(
                     "v1 lowers integer kernels only (I32/U32 here: this dialect has no 64-bit integer spelling); compute dtype is {other:?}"
                 )
             } else {
-                format!("v1 lowers integer kernels only; compute dtype is {other:?}")
+                format!(
+                    "v1 lowers integer kernels only (and F32/F64 where the dialect spells it); compute dtype is {other:?}"
+                )
             },
         )),
     }
+}
+
+/// Whether a buffer or local of type `elem` may appear in the kernel: the compute dtype, and in a
+/// float kernel the other float width and the 32-bit integers (the operands and results of a `Cast`).
+fn buffer_elem_ok(d: &dyn Dialect, kernel: &KernelFn, elem: ElementKind) -> bool {
+    elem == kernel.compute
+        || (d.float()
+            && matches!(kernel.compute, ElementKind::F32 | ElementKind::F64)
+            && matches!(
+                elem,
+                ElementKind::F32 | ElementKind::F64 | ElementKind::I32 | ElementKind::U32
+            ))
 }
 
 /// One buffer parameter, or a decline.
@@ -77,12 +106,13 @@ fn buffer(d: &dyn Dialect, kernel: &KernelFn, i: usize) -> Result<Decl, LowerErr
     let p = &kernel.params[i];
     match &p.kind {
         ParamKind::Buffer { elem, role, rank }
-            if *elem == kernel.compute && rank.is_none_or(|r| r == 1) =>
+            if buffer_elem_ok(d, kernel, *elem) && rank.is_none_or(|r| r == 1) =>
         {
             Ok(Decl {
                 name: format!("b{i}"),
                 binding: u32::try_from(i).expect("binding fits u32"),
                 role: *role,
+                elem: *elem,
                 len: 0,
                 private: false,
                 atomic: false,
@@ -91,12 +121,13 @@ fn buffer(d: &dyn Dialect, kernel: &KernelFn, i: usize) -> Result<Decl, LowerErr
             })
         }
         ParamKind::Scalar { ty, local }
-            if *ty == kernel.compute && sizes_array(kernel, *local) && !d.wide() =>
+            if *ty == kernel.compute && sizes_array(kernel, *local) && !d.wide() && !d.float() =>
         {
             Ok(Decl {
                 name: format!("s{i}"),
                 binding: u32::try_from(i).expect("spec id fits u32"),
                 role: BufferRole::Read,
+                elem: kernel.compute,
                 len: 0,
                 private: false,
                 atomic: false,
@@ -151,6 +182,7 @@ fn dynamic_shared(
         name: format!("a{i}"),
         binding: 0,
         role: BufferRole::ReadWrite,
+        elem: kernel.compute,
         len: 0,
         private: false,
         atomic: false,
@@ -170,6 +202,7 @@ fn shared(d: &dyn Dialect, kernel: &KernelFn, i: usize) -> Result<Decl, LowerErr
                 name: format!("a{i}"),
                 binding: 0,
                 role: BufferRole::ReadWrite,
+                elem: kernel.compute,
                 len: n,
                 private: a.space == MemorySpace::Private,
                 atomic: false,
@@ -272,7 +305,7 @@ fn locals(d: &dyn Dialect, kernel: &KernelFn) -> Result<(), LowerError> {
     match kernel
         .locals
         .iter()
-        .position(|l| l.lanes != 1 || l.elem != kernel.compute)
+        .position(|l| l.lanes != 1 || !buffer_elem_ok(d, kernel, l.elem))
     {
         Some(i) => Err(refuse(
             d.name(),
@@ -281,6 +314,32 @@ fn locals(d: &dyn Dialect, kernel: &KernelFn) -> Result<(), LowerError> {
         )),
         None => Ok(()),
     }
+}
+
+/// A float kernel using both `F32` and `F64` (a conversion between them, or a buffer of the other
+/// width) needs float controls at two widths, which a dialect may be unable to declare.
+fn mixed_widths(d: &dyn Dialect, kernel: &KernelFn) -> Result<(), LowerError> {
+    if !d.float() || d.mixed_float_widths() {
+        return Ok(());
+    }
+    let elems = kernel
+        .params
+        .iter()
+        .filter_map(|p| match &p.kind {
+            ParamKind::Buffer { elem, .. } => Some(*elem),
+            _ => None,
+        })
+        .chain(kernel.locals.iter().map(|l| l.elem))
+        .chain([kernel.compute]);
+    let has = |t: ElementKind| elems.clone().any(|e| e == t);
+    if has(ElementKind::F32) && has(ElementKind::F64) {
+        return Err(refuse(
+            d.name(),
+            kernel,
+            "a kernel using both F32 and F64 is not lowered: its float controls would be declared at two widths, which this dialect cannot name",
+        ));
+    }
+    Ok(())
 }
 
 /// A subgroup size range must hold a size a Vulkan device can have: a power of two from 1 to 128. The
@@ -312,7 +371,7 @@ pub(crate) fn check(d: &dyn Dialect, kernel: &KernelFn) -> Result<Scope, LowerEr
     check_kernel(kernel).map_err(|e| LowerError::UnsupportedKernel {
         detail: format!("check_kernel refused kernel `{}`: {e:?}", kernel.name),
     })?;
-    let signed = dtype(d, kernel)?;
+    let (signed, float) = dtype(d, kernel)?;
     let launch = launch(d, kernel)?;
     locals(d, kernel)?;
     subgroup_range(d, kernel, launch)?;
@@ -322,6 +381,7 @@ pub(crate) fn check(d: &dyn Dialect, kernel: &KernelFn) -> Result<Scope, LowerEr
     let mut shared = (0..kernel.allocs.len())
         .map(|i| shared(d, kernel, i))
         .collect::<Result<Vec<_>, _>>()?;
+    mixed_widths(d, kernel)?;
     let mut atomic = BTreeSet::new();
     if d.typed_atomics() {
         atomic_places(&kernel.body, &mut atomic);
@@ -331,12 +391,14 @@ pub(crate) fn check(d: &dyn Dialect, kernel: &KernelFn) -> Result<Scope, LowerEr
     }
     Ok(Scope {
         signed,
+        float,
         block: launch.block,
         grid: launch.grid,
         buffers,
         shared,
         subgroup: uses_subgroup(&kernel.body) || launch.subgroup.is_some(),
         atomic,
+        rte: std::cell::RefCell::new(BTreeSet::new()),
         backend: d.name(),
     })
 }

@@ -33,6 +33,20 @@
 //! check, as for SPIR-V. 64-bit atomics, a specialization-constant extent and integer division are
 //! typed declines (the shared walker lowers no `Div`).
 //!
+//! ## Floats
+//!
+//! An `F32` kernel is spelled `float`, an `F64` kernel `double` (`#extension GL_ARB_gpu_shader_fp64 :
+//! require`, literals `1.5lf`; the host needs `shaderFloat64`), with `DenormPreserve` and
+//! `SignedZeroInfNanPreserve` at the kernel's width
+//! declared through `GL_EXT_spirv_intrinsics`. Every local and every value stored is `precise`, so
+//! glslang decorates the contributing adds, subtracts and multiplies `NoContraction` (a driver may not
+//! fuse `a * b + a`). Lowered: `Add`/`Sub`/`Mul` (correctly rounded in Vulkan), the six compares,
+//! NaN-propagating `Max`/`Min`, `Neg`/`Abs`/`Sqr`/`Floor`/`Ceil`/`Trunc`/`Round` and `Select`, over
+//! buffers and workgroup arrays of `float`; indices are the `u32` execution ids. Declined by name: `Div`,
+//! `Sqrt`, `Recip`, `Rsqrt` and the transcendentals (their Vulkan bound is looser than the contract
+//! tier, the table of `vulkane-spirv-emit`), a `Cast` outside `I32`/`U32`/`F32`/`F64` (and `F32`<->`F64`, one float width per kernel), control flow (its test is an integer one), a
+//! scalar parameter, atomics, and `F16` kernels.
+//!
 //! The plan path (`Backend::lower`) is not implemented: this emitter lowers kernels only.
 
 mod dialect;
@@ -53,9 +67,12 @@ impl Backend for Glsl {
     }
     fn supports_dtype(&self, dtype: ElementKind, _target: TargetId) -> DtypeSupport {
         match dtype {
-            ElementKind::I32 | ElementKind::U32 | ElementKind::I64 | ElementKind::U64 => {
-                DtypeSupport::Supported
-            }
+            ElementKind::I32
+            | ElementKind::U32
+            | ElementKind::I64
+            | ElementKind::U64
+            | ElementKind::F32
+            | ElementKind::F64 => DtypeSupport::Supported,
             _ => DtypeSupport::Unsupported,
         }
     }
@@ -70,6 +87,13 @@ impl Backend for Glsl {
     fn lower_kernel(&self, kernel: &KernelFn) -> Result<GeneratedKernel, LowerError> {
         let wide = matches!(kernel.compute, ElementKind::I64 | ElementKind::U64);
         let signed = matches!(kernel.compute, ElementKind::I64);
-        vulkane_kernel_text::lower_kernel(&dialect::Text { wide, signed }, kernel)
+        let float = matches!(kernel.compute, ElementKind::F32 | ElementKind::F64);
+        let text = dialect::Text {
+            wide,
+            signed,
+            float,
+            double: kernel.compute == ElementKind::F64,
+        };
+        vulkane_kernel_text::lower_kernel(&text, kernel)
     }
 }
