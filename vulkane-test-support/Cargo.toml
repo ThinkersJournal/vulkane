@@ -1,0 +1,12 @@
+[package]
+name         = "vulkane-test-support"
+version      = "0.25.5"
+edition      = "2024"
+rust-version = "1.85"
+authors      = ["Eric Evans <CireSnave@gmail.com>"]
+license      = "MIT OR Apache-2.0"
+description  = "Shared test support for the Vulkane workspace (GPU lock witness, kernels, oracles). Never published."
+repository   = "https://github.com/ThinkersJournal/vulkane"
+publish      = false
+
+[dependencies]

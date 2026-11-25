@@ -2186,6 +2186,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "vulkane-test-support"
+version = "0.25.5"
+
+[[package]]
 name = "vulkane-wgsl-emit"
 version = "0.25.5"
 dependencies = [
