@@ -48,11 +48,19 @@
 //! and `ushort`, reached by C-style casts (modular narrowing, sign- or zero-extending widening); an atomic beside one is a
 //! decline (the atomic target would have to be shown 32-bit). Text pinned, **not compiled**.
 //!
+//! `Bf16` kernels (Metal 3.1 and later; MSL 2.1, 2.24) are `bfloat` with explicit `static_cast<bfloat>` literals (neither
+//! `float` nor `half` converts implicitly to it); the unary ops go through `float` because the math functions of MSL 6.6 take
+//! `half` and `float` only (the widening and the exact result make that exact); `isnan` and the comparisons are defined on
+//! `bfloat` (6.5). Whether a device rounds a bfloat add or multiply once is the device's (see the float caveat above).
+//! Packed (vector) locals reach the dialect already scalarized by the walker, so a `vec2`/`vec4` kernel lowers lane by lane
+//! with the same bits; `float2`, `half4` and `uchar4` are not spelled. FP8 is declined by name: MSL 4.1 2.21 has the FP8
+//! formats only as `packed_numeric_type` and tensor format tags.
+//!
 //! ## Declined by name
 //!
 //! A kernel named with an MSL keyword or type name (`float`, `kernel`, `tid`, ...: `kernel void float(` cannot compile),
-//! `Bf16` (Metal 3.1 has `bfloat`, not spelled yet), `F64` (Metal has no `double`), `Div`, `Sqrt` and the transcendentals (looser bound than the contract tier), other
-//! 64-bit and vector kernels, float atomics, a subgroup-scope atomic, scalar parameters, the device ids
+//! `Bf16` with a non-bfloat constant, `Fp8*`, `F64` (Metal has no `double`), `Div`, `Sqrt` and the transcendentals (looser bound than the contract tier), other
+//! 64-bit kernels, float atomics, a subgroup-scope atomic, scalar parameters, the device ids
 //! (`DeviceRank`, `DeviceCount`), and a `Barrier` or `Fence` at a scope other than block or subgroup (a barrier) / block or device (a
 //! fence): each a typed `UnsupportedKernel` from the shared walker naming it. The twelve NVIDIA-only
 //! statements of board 434 C are refused by name first. The plan path (`Backend::lower`) is not
@@ -145,9 +153,11 @@ impl Backend for Msl {
     }
     fn supports_dtype(&self, dtype: ElementKind, _target: TargetId) -> DtypeSupport {
         match dtype {
-            ElementKind::I32 | ElementKind::U32 | ElementKind::F32 | ElementKind::F16 => {
-                DtypeSupport::Supported
-            }
+            ElementKind::I32
+            | ElementKind::U32
+            | ElementKind::F32
+            | ElementKind::F16
+            | ElementKind::Bf16 => DtypeSupport::Supported,
             _ => DtypeSupport::Unsupported,
         }
     }
@@ -180,9 +190,13 @@ impl Backend for Msl {
                 ),
             });
         }
-        let generated = if matches!(kernel.compute, ElementKind::F32 | ElementKind::F16) {
+        let generated = if matches!(
+            kernel.compute,
+            ElementKind::F32 | ElementKind::F16 | ElementKind::Bf16
+        ) {
             let d = float::MslFloat {
                 half: kernel.compute == ElementKind::F16,
+                bf16: kernel.compute == ElementKind::Bf16,
                 ..Default::default()
             };
             vulkane_kernel_text::lower_kernel(&d, kernel)?
