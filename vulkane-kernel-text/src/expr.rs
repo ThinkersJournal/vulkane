@@ -92,7 +92,9 @@ impl Spell<'_> {
 
     /// A float literal, exact at `f32`, or a decline.
     fn constant(&self, v: f64) -> Result<Spelling, LowerError> {
-        let at_width = if self.d.half() {
+        let at_width = if self.d.bfloat() {
+            exact_bfloat(v)
+        } else if self.d.half() {
             exact_half(v)
         } else {
             self.d.double() || f64::from(v as f32) == v
@@ -264,6 +266,12 @@ impl Spell<'_> {
             ))
         }
     }
+}
+
+/// Whether `v` is exactly a `bfloat16`: an `f32` (same exponent range) whose low 16 mantissa bits are zero.
+fn exact_bfloat(v: f64) -> bool {
+    let f = v as f32;
+    f64::from(f) == v && f.to_bits() & 0xFFFF == 0
 }
 
 /// Whether `v` is exactly an IEEE half: within 65504, a multiple of 2^-24 (the smallest subnormal)
