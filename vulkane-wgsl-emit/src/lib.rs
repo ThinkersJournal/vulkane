@@ -19,10 +19,13 @@
 //! version does not emit (ROADMAP 8e). Ops with no exact spelling decline with the op named: the `erf` family, `copysign`,
 //! `nextafter`, a fused `fma` (WGSL's `fma` is not guaranteed to round once), casts, integer division and remainder.
 //!
-//! ## Subnormals
+//! ## Subnormals and fusion
 //!
 //! WGSL has no way to request IEEE subnormal handling, so f32 results near zero are the device's, unlike the Slang and HLSL
-//! emitters, whose compiler arguments (`-denorm preserve`) fix it. Every float kernel's header says so.
+//! emitters, whose compiler arguments (`-denorm preserve`) fix it. Nor does it forbid fusion: the WGSL specification (15.7.5)
+//! says "An implementation may reassociate operations" and "An implementation may fuse operations if the transformed
+//! expression is at least as accurate as the original formulation", so a body of correctly rounded primitives (0 ulp in
+//! unpopped's precision contract) may round once where the oracle rounds twice. Every float kernel's header says both.
 //!
 //! ## Bindings
 //!
@@ -68,8 +71,10 @@ fn why_not(dt: ElementKind) -> &'static str {
     }
 }
 
-/// Subnormal handling is the device's: WGSL cannot ask for IEEE behaviour. Said in the header of every float kernel.
-const DENORM_NOTE: &str = "// note: WGSL cannot request IEEE subnormal handling; f32 results near zero are the device's\n";
+/// Subnormal handling and operation fusion are the device's: WGSL cannot ask for IEEE behaviour, and its
+/// specification (15.7.5) lets an implementation reassociate and fuse. Said in the header of every float kernel.
+const DENORM_NOTE: &str = "// note: WGSL cannot request IEEE subnormal handling, and an implementation may fuse a multiply and an add or reassociate; f32 results near zero and the last bit of a multi-operation body are the device's
+";
 
 /// Does `e` read a runtime scalar parameter? (This version is parameterless.)
 fn body_has_params(e: &ScalarExpr) -> bool {

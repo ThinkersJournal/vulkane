@@ -161,6 +161,9 @@ fn harness_shape_is_pinned() {
         assert!(src.contains(line), "missing `{line}`:\n{src}");
     }
     assert!(src.contains("cannot request IEEE subnormal"), "{src}");
+    // WGSL 15.7.5: an implementation may fuse (and reassociate), so the header says that too (ROADMAP 8m).
+    assert!(src.contains("may fuse a multiply and an add"), "{src}");
+    assert!(src.contains("reassociate"), "{src}");
 }
 
 /// The shift count is a `u32` in WGSL: an `i32` count is converted, a `u32` count is not. Control: the mask is present on both.
