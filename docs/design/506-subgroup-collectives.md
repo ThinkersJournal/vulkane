@@ -70,6 +70,36 @@ inactive threads to 0"), and `T` excludes `bool`, `bfloat`, `long`, `ulong` (tho
 * **Edge rule:** fishstringer already spells it in the emitted text (`Idx`: `((id % WaveGetLaneCount()) + LaneCount) % LaneCount`; `Up/Down/Xor`: a range test, own value otherwise). **Executing them on a device is UNMEASURED.**
 * **HLSL goes through `fishstringer-slang-emit` today** (`vulkane-hlsl-emit::lower_kernel` delegates), and that emitter refuses every `Collective` for every device (`src/gaps.rs`, `kernel_lower.rs`). The lift for HLSL is a **FishStringer change** (pm-kernels agreed, 2026-11-26): vulkane does not edit Slang. Until it publishes on unpopped 0.59, HLSL is not started.
 
+## The HLSL back door to SPIR-V, and the guard (pm-kernels 2026-11-26; measured with dxc 1.9.0.5347, slangc 2026.8)
+
+HLSL with a Wave intrinsic compiles to SPIR-V `OpGroupNonUniform*` under `dxc -spirv -fspv-target-env=vulkan1.1+` (measured), which is exactly
+what board 506 keeps declined ("SPIR-V OpGroupNonUniform and GLSL subgroup ops stay declined"). So the HLSL text that `vulkane-hlsl-emit` hands out for a kernel that holds a
+lowered `Collective` must carry a guard prefix, prepended before any other line:
+
+```
+#ifdef __spirv__
+#error "subgroup collectives are declined for SPIR-V (board 506)"
+#endif
+#ifdef __SLANG__
+#error "subgroup collectives are declined for non-HLSL targets (board 506)"
+#endif
+```
+
+Measured, one macro at a time, with controls (each probe file a distinct name: on Windows two names differing only in case are the SAME file, which silently
+corrupted a first probe):
+
+| macro | `dxc -spirv` | plain `dxc -T cs_6_x` (DXIL) | `slangc -lang hlsl -target spirv` |
+|---|---|---|---|
+| `__spirv__` | **defined** | not defined | not defined |
+| `__SLANG__`, `__SLANG_COMPILER__`, `__HLSL__` | not defined | not defined | **defined** |
+
+* The first guard: `dxc -spirv` (every target env tried: none, 1.1, 1.3) REJECTS with the `#error` text; plain `dxc -T cs_6_0` and `cs_6_6` ACCEPT; the **guard-removed mutant** is ACCEPTED under `-spirv`; a guard naming a macro dxc does not define (`__SPIRV_NOT_DEFINED__`) is ACCEPTED under `-spirv` (so the rejection is the `__spirv__` line and nothing else).
+* **The first guard alone does not close `slangc`:** `slangc -lang hlsl -target spirv` ACCEPTS the guarded text (control: also accepts the unguarded text). Hence the second guard on `__SLANG__`: the HLSL is for `dxc` DXIL only. (Not yet re-run with the second guard in place: do it when the code exists.)
+* **Other HLSL front ends are UNMEASURED:** `glslang -D -V` on this machine rejects the unguarded control too (a parse error on the Slang-style declarations), so it says nothing either way. A text prefix is a default-safe measure, not enforcement: anyone can delete it, as anyone can delete the `__target_switch` guard on fishstringer's Slang text; the README note is the legal half.
+* **Pipeline (proposed to fishstringer, cc pm-kernels):** `vulkane-hlsl-emit::lower_kernel` is pure Rust and runs no external tool, so it cannot run `slangc`. fishstringer returns the guard-free plain HLSL (a second text beside its `__target_switch` Slang text), and `vulkane-hlsl-emit`'s retarget step (a) **refuses by name** any output that contains a `Wave` intrinsic and does not start with the guard, and (b) prepends the guard itself when fishstringer's text lacks it, so the guarantee lives in the crate that is published as HLSL.
+* **Flags:** `required_dxc_args` for a collective kernel keeps **no `-spirv` and no `-fspv-target-env`** (it has no target env today; do not add one for collectives).
+* **Tests (after the take; `tests/collective_guard.rs` in `vulkane-hlsl-emit`, skipping loudly without dxc unless `VULKANE_REQUIRE_DXC`):** (1) `dxc -spirv` on the output of a collective kernel FAILS with the guard text; (2) plain `dxc -T cs_6_x` on it SUCCEEDS; (3) the guard-removed mutant PASSES under `-spirv` (proves (1) can fail); (4) the wrong-macro control passes under `-spirv`; (5) `slangc -lang hlsl -target spirv` on it FAILS (second guard); (6) `required_dxc_args` for that kernel contains neither `-spirv` nor `-fspv-target-env`; (7) output with a `Wave` intrinsic and no guard is refused by name.
+
 ## Edge semantics: the IR (oracle) is not the target functions
 
 Measured from `unpopped` 0.58.5 `src/oracle/kernel_collective.rs` (the oracle `run_launch_with_subgroup` compares against):
