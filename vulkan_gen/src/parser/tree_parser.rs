@@ -67,11 +67,6 @@ fn reconstruct_definition(node: roxmltree::Node) -> String {
     result.trim().to_string()
 }
 
-/// Get the raw XML content of a node as a string (for raw_content fields)
-fn raw_xml_content(node: roxmltree::Node) -> String {
-    full_text(node)
-}
-
 fn attr(node: roxmltree::Node, name: &str) -> Option<String> {
     node.attribute(name).map(|s| s.to_string())
 }
@@ -280,7 +275,7 @@ fn parse_struct_or_union(node: roxmltree::Node, category: &str, spec: &mut Vulka
             alias: Some(alias),
             api: attr(node, "api"),
             members: Vec::new(),
-            raw_content: raw_xml_content(node),
+            raw_content: full_text(node),
             is_alias: true,
             source_line: None,
         });
@@ -324,7 +319,7 @@ fn parse_struct_or_union(node: roxmltree::Node, category: &str, spec: &mut Vulka
             comment: comment_or_child(member_node),
             api: attr(member_node, "api"),
             definition,
-            raw_content: raw_xml_content(member_node),
+            raw_content: full_text(member_node),
         });
     }
 
@@ -339,7 +334,7 @@ fn parse_struct_or_union(node: roxmltree::Node, category: &str, spec: &mut Vulka
         alias: None,
         api: attr(node, "api"),
         members,
-        raw_content: raw_xml_content(node),
+        raw_content: full_text(node),
         is_alias: false,
         source_line: None,
     });
@@ -356,7 +351,7 @@ fn parse_include(node: roxmltree::Node, spec: &mut VulkanSpecification) {
         comment: attr(node, "comment"),
         api: attr(node, "api"),
         deprecated: attr(node, "deprecated"),
-        raw_content: raw_xml_content(node),
+        raw_content: full_text(node),
     });
 }
 
@@ -368,7 +363,7 @@ fn parse_define(node: roxmltree::Node, spec: &mut VulkanSpecification) {
         return;
     }
 
-    let raw = raw_xml_content(node);
+    let raw = full_text(node);
 
     // Determine macro type and extract parameters
     let (macro_type, parameters) = if raw.contains('(') && raw.contains(')') {
@@ -451,7 +446,7 @@ fn parse_general_type(node: roxmltree::Node, category: &str, spec: &mut VulkanSp
 
     // Build definition from full text content
     let definition = {
-        let text = raw_xml_content(node);
+        let text = full_text(node);
         if text.trim().is_empty() {
             None
         } else {
@@ -471,7 +466,7 @@ fn parse_general_type(node: roxmltree::Node, category: &str, spec: &mut VulkanSp
         alias: attr(node, "alias"),
         deprecated: attr(node, "deprecated"),
         comment: comment_or_child(node),
-        raw_content: raw_xml_content(node),
+        raw_content: full_text(node),
         type_references: type_refs,
         is_alias,
     });
@@ -501,7 +496,7 @@ fn parse_enums_block(node: roxmltree::Node, spec: &mut VulkanSpecification) {
                 api: attr(enum_child, "api"),
                 deprecated: attr(enum_child, "deprecated"),
                 constant_type: attr(enum_child, "type").unwrap_or_else(|| "enum".to_string()),
-                raw_content: raw_xml_content(enum_child),
+                raw_content: full_text(enum_child),
                 is_alias,
                 source_line: None,
             });
@@ -529,7 +524,7 @@ fn parse_enums_block(node: roxmltree::Node, spec: &mut VulkanSpecification) {
             offset: None,
             dir: None,
             extends: None,
-            raw_content: raw_xml_content(enum_child),
+            raw_content: full_text(enum_child),
             is_alias,
             source_line: None,
         });
@@ -543,7 +538,7 @@ fn parse_enums_block(node: roxmltree::Node, spec: &mut VulkanSpecification) {
         deprecated: attr(node, "deprecated"),
         api: attr(node, "api"),
         values,
-        raw_content: raw_xml_content(node),
+        raw_content: full_text(node),
         is_alias: false,
         source_line: None,
     });
@@ -604,7 +599,7 @@ fn parse_command(node: roxmltree::Node, spec: &mut VulkanSpecification) {
             renderpass: attr(node, "renderpass"),
             videocoding: attr(node, "videocoding"),
             parameters: Vec::new(),
-            raw_content: raw_xml_content(node),
+            raw_content: full_text(node),
             is_alias: true,
             source_line: None,
         });
@@ -663,7 +658,7 @@ fn parse_command(node: roxmltree::Node, spec: &mut VulkanSpecification) {
             deprecated: attr(param_node, "deprecated"),
             comment: attr(param_node, "comment"),
             definition,
-            raw_content: raw_xml_content(param_node),
+            raw_content: full_text(param_node),
             source_line: None,
         });
     }
@@ -683,7 +678,7 @@ fn parse_command(node: roxmltree::Node, spec: &mut VulkanSpecification) {
         renderpass: attr(node, "renderpass"),
         videocoding: attr(node, "videocoding"),
         parameters,
-        raw_content: raw_xml_content(node),
+        raw_content: full_text(node),
         is_alias: false,
         source_line: None,
     });
@@ -742,7 +737,7 @@ fn parse_extension(node: roxmltree::Node, spec: &mut VulkanSpecification) {
         sortorder: attr(node, "sortorder"),
         require_blocks,
         remove_blocks,
-        raw_content: raw_xml_content(node),
+        raw_content: full_text(node),
         source_line: None,
     });
 }
@@ -793,7 +788,7 @@ fn parse_require_block(node: roxmltree::Node, ext_number: &Option<String>) -> Ex
             extnumber,
             alias: attr(child, "alias"),
             protect: attr(child, "protect"),
-            raw_content: raw_xml_content(child),
+            raw_content: full_text(child),
         });
     }
 
@@ -805,7 +800,7 @@ fn parse_require_block(node: roxmltree::Node, ext_number: &Option<String>) -> Ex
         comment: attr(node, "comment"),
         depends: attr(node, "depends"),
         items,
-        raw_content: raw_xml_content(node),
+        raw_content: full_text(node),
     }
 }
 
@@ -826,7 +821,7 @@ fn parse_remove_block(node: roxmltree::Node) -> ExtensionRemove {
             name: attr(child, "name").unwrap_or_default(),
             comment: attr(child, "comment"),
             api: attr(child, "api"),
-            raw_content: raw_xml_content(child),
+            raw_content: full_text(child),
         });
     }
 
@@ -835,7 +830,7 @@ fn parse_remove_block(node: roxmltree::Node) -> ExtensionRemove {
         profile: attr(node, "profile"),
         comment: attr(node, "comment"),
         items,
-        raw_content: raw_xml_content(node),
+        raw_content: full_text(node),
     }
 }
 
@@ -893,7 +888,7 @@ fn parse_feature(node: roxmltree::Node, spec: &mut VulkanSpecification) {
                                 offset: attr(item_node, "offset"),
                                 dir: attr(item_node, "dir"),
                                 extends: attr(item_node, "extends"),
-                                raw_content: raw_xml_content(item_node),
+                                raw_content: full_text(item_node),
                                 is_alias: attr(item_node, "alias").is_some(),
                                 source_line: None,
                             },
@@ -912,7 +907,7 @@ fn parse_feature(node: roxmltree::Node, spec: &mut VulkanSpecification) {
                 comment: attr(item_node, "comment"),
                 api: attr(item_node, "api"),
                 deprecated: attr(item_node, "deprecated"),
-                raw_content: raw_xml_content(item_node),
+                raw_content: full_text(item_node),
             });
         }
 
@@ -921,7 +916,7 @@ fn parse_feature(node: roxmltree::Node, spec: &mut VulkanSpecification) {
             profile: attr(child, "profile"),
             comment: attr(child, "comment"),
             items,
-            raw_content: raw_xml_content(child),
+            raw_content: full_text(child),
         });
     }
 
@@ -932,7 +927,7 @@ fn parse_feature(node: roxmltree::Node, spec: &mut VulkanSpecification) {
         comment: attr(node, "comment"),
         deprecated: attr(node, "deprecated"),
         require_blocks,
-        raw_content: raw_xml_content(node),
+        raw_content: full_text(node),
     });
 
     // Merge feature enum extensions into base enums
@@ -968,7 +963,7 @@ fn parse_platforms_section(node: roxmltree::Node, spec: &mut VulkanSpecification
             comment: attr(platform, "comment"),
             api: attr(platform, "api"),
             deprecated: attr(platform, "deprecated"),
-            raw_content: raw_xml_content(platform),
+            raw_content: full_text(platform),
         });
     }
 }
@@ -989,7 +984,7 @@ fn parse_tags_section(node: roxmltree::Node, spec: &mut VulkanSpecification) {
             comment: attr(tag, "comment"),
             api: attr(tag, "api"),
             deprecated: attr(tag, "deprecated"),
-            raw_content: raw_xml_content(tag),
+            raw_content: full_text(tag),
             source_line: None,
         });
     }

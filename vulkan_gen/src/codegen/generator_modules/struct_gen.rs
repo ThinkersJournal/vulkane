@@ -308,7 +308,7 @@ impl StructGenerator {
     fn can_derive_copy(&self, struct_def: &StructDefinition) -> bool {
         // Check all fields to see if they can be copied
         for field in &struct_def.members {
-            let rust_type = self.simple_map_type(&field.type_name);
+            let rust_type = self.map_base_vulkan_to_rust(&field.type_name);
 
             // For simplified version, assume most Vulkan types can be copied
             if !self.type_supports_copy_simple(&rust_type) {
@@ -407,11 +407,6 @@ impl StructGenerator {
             "unsigned" => "u32".to_string(),
             _ => vulkan_type.to_string(), // Keep Vulkan types as-is
         }
-    }
-
-    /// Simple type mapping for simplified intermediate types
-    fn simple_map_type(&self, type_name: &str) -> String {
-        self.map_base_vulkan_to_rust(type_name)
     }
 
     /// Parse a struct member definition to produce the full Rust type.
