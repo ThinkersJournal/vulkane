@@ -96,7 +96,7 @@ fn declined_434c() -> Vec<Case> {
     ]
 }
 
-/// The seven of the 2026-11-16 extension.
+/// The seven of the 2026-11-16 extension, and `CopyUnpack` (unpopped 0.58).
 fn declined_ext() -> Vec<Case> {
     let ext = MARKER_EXT;
     vec![
@@ -144,6 +144,18 @@ fn declined_ext() -> Vec<Case> {
         ),
         ("Tcgen05Commit", ext, Stmt::Tcgen05Commit { bar: bar() }),
         ("WgmmaWait", ext, Stmt::WgmmaWait { pending: 0 }),
+        // INTERIM until `unpopped::fixtures` (ROADMAP 9h): this fixture is not checker-valid and has no vacuity mutant, so
+        // it proves the by-name refusal only, not that the emitter arm is reached on a valid kernel.
+        (
+            "CopyUnpack",
+            ext,
+            Stmt::CopyUnpack {
+                dst: bar(),
+                src: bar(),
+                groups: 1,
+                bar: bar(),
+            },
+        ),
     ]
 }
 
@@ -199,8 +211,8 @@ fn nest_while(s: Stmt) -> Stmt {
 fn each_declined_statement_is_refused_by_name_at_every_depth() {
     assert_eq!(
         declined().len(),
-        12,
-        "the declined list is twelve statements"
+        13,
+        "the declined list is thirteen statements (twelve, and `CopyUnpack` since unpopped 0.58)"
     );
     for (name, marker, _) in declined() {
         let shapes: Vec<Shape> = vec![
