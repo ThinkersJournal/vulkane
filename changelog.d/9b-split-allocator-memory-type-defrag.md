@@ -1,0 +1,3 @@
+kind: `vulkane::safe::allocator` is split: memory-type selection and defragmentation planning move into their own files (ROADMAP 9b slice 1, CodeRipper MOD-005); no API change
+---
+`allocator/mod.rs` was the repository's size outlier (CodeRipper MOD-005). Memory-type selection (with its tests) moves to `allocator/memory_type.rs` and defragmentation planning to `allocator/defrag.rs`; `DefragmentationMove` and `DefragmentationPlan` are re-exported from the same path, so no public path changes. A move, not a rewrite: the cherry-picked commit of the old `day-2026-11-26-9b` branch (26c3eca), re-cut onto current main. Evidence is in the PR body.
