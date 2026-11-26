@@ -130,6 +130,12 @@ POLICIES = [
     ("pip install", SKIP,
      "runner provisioning; a gate that installs things makes a local check depend" +
      " on the network"),
+    ("cargo install coderipper", SKIP,
+     "provisions the pinned CodeRipper from crates.io (network and a long compile); a gate that installs"
+     + " things makes a local check depend on the network"),
+    ("coderipper check SUP-016", SKIP,
+     "needs the pinned CodeRipper 0.48.1 installed by the step above; the old spdx_gate.py rows below RUN"
+     + " the same per-file licence question locally until the hosted SUP-016 step has been read on a runner"),
     ("apt-get", SKIP,
      "provisions a Linux runner; this box is Windows with the SDK already installed"),
     ("$GITHUB_OUTPUT", SKIP,
