@@ -17,7 +17,7 @@ include      = ["src/**", "README.md", "LICENSE-*", "THIRD-PARTY-NOTICES.md"]
 unpopped            = "~0.59.1"
 unpopped-vocab      = "~0.59.1"
 # FishStringer owns Slang (CireSnave 2026-11-06). `~` not `^`: this crate asserts the emitter's output shape.
-fishstringer-slang-emit = "~0.7.0"
+fishstringer-slang-emit = "~0.8.0"
 
 [dev-dependencies]
 # The published decline fixtures (ROADMAP 9h): one checker-valid kernel or module per `Stmt` variant.
