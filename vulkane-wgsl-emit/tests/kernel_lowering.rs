@@ -306,7 +306,7 @@ fn what_wgsl_cannot_say_is_a_typed_decline_naming_it() {
 
     let mut float = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
     float.compute = unpopped_vocab::ElementKind::F32;
-    declined(&float, "integer kernels only");
+    declined(&float, "a F32 kernel is not lowered");
 }
 
 /// Row 8d: 1024 contended atomic updates through WGSL (`array<atomic<u32>>`, naga, a device); the

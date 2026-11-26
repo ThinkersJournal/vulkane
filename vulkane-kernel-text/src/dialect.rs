@@ -2,7 +2,7 @@
 //! What a target language supplies to the walker.
 
 use unpopped::exec::{ExecId, Scope};
-use unpopped::ir::{ArithOp, BinaryOp};
+use unpopped::ir::{ArithOp, BinaryOp, RoundMode, UnaryOp};
 use unpopped::kernel::{AtomicOp, BufferRole, MemoryOrder};
 use unpopped_vocab::ElementKind;
 
@@ -38,6 +38,9 @@ pub struct Decl {
     pub binding: u32,
     /// The access of a buffer; `ReadWrite` for a shared array.
     pub role: BufferRole,
+    /// The element type: the compute dtype, except in a float kernel, whose buffers may also hold
+    /// the other float width and the 32-bit integers a `Cast` converts.
+    pub elem: ElementKind,
     /// The element count of a shared array; `0` for a buffer.
     pub len: u32,
     /// `true` for a per-thread (`Private`) array, `false` for a buffer or a workgroup array.
@@ -71,6 +74,11 @@ pub struct Layout {
     pub spec_locals: Vec<(u32, String)>,
     /// How many locals the body declares (`l0..`).
     pub locals: usize,
+    /// The element type of each local (the compute dtype, except in a float kernel).
+    pub local_elems: Vec<ElementKind>,
+    /// The widths (16/32/64) at which the body does a rounding float conversion, so the module must
+    /// declare the round-to-nearest-even mode there.
+    pub rte: Vec<u32>,
     /// Whether any statement is a subgroup barrier or fence (a GLSL extension line).
     pub subgroup: bool,
 }
@@ -99,6 +107,69 @@ pub trait Dialect {
     /// types it as, reached through a `Cast`.
     fn wide(&self) -> bool {
         false
+    }
+    /// Why this dialect cannot lower a float kernel at all, named in the decline of one (`None`: no
+    /// reason beyond the generic one). Only asked of a dialect whose [`Self::float`] is false.
+    fn float_refusal(&self) -> Option<&'static str> {
+        None
+    }
+    /// Whether this dialect instance lowers float kernels (`F32`, or `F64` when [`Self::double`]). The default is no: such a kernel is then a
+    /// typed decline naming the dialect. A dialect that says yes spells [`Self::lit_float`],
+    /// [`Self::float_unary`] and [`Self::float_minmax`], keeps every float add, subtract and multiply
+    /// unfused ([`Self::temp_typed`]) and keeps an execution id the `u32` the IR types it as.
+    fn float(&self) -> bool {
+        false
+    }
+    /// Whether the float kernel this instance lowers is `F64` rather than `F32` (only asked when
+    /// [`Self::float`] is true).
+    fn double(&self) -> bool {
+        false
+    }
+    /// Whether one kernel may use float types of two widths (`F32` and `F64` together). The default
+    /// is yes; a dialect whose float-control declarations cannot name two widths says no, and such a
+    /// kernel is a typed decline.
+    fn mixed_float_widths(&self) -> bool {
+        true
+    }
+    /// A float literal for `v`, already known to be a finite value exact at the kernel's float width, or `None`.
+    fn lit_float(&self, _v: f64) -> Option<String> {
+        None
+    }
+    /// `x` of type `from` converted to `to` (both `F32`, `F64`, `I32` or `U32` in a float kernel), the
+    /// rounding of a float to integer conversion being `round`; the walker has already checked the
+    /// combination is one it lowers. A float to integer conversion maps NaN to 0 and clamps to the
+    /// destination range, an integer to float or float narrowing rounds to nearest even.
+    fn convert(
+        &self,
+        _x: &str,
+        _from: ElementKind,
+        _to: ElementKind,
+        _round: RoundMode,
+    ) -> Option<String> {
+        None
+    }
+    /// A float unary op on `x`, or `None` when there is no exact spelling (the walker declines by name).
+    fn float_unary(&self, _op: UnaryOp, _x: &str) -> Option<String> {
+        None
+    }
+    /// NaN-propagating max (`is_max`) or min of `a` and `b`, `a` on ties; `None` when not spelled.
+    fn float_minmax(&self, _is_max: bool, _a: &str, _b: &str) -> Option<String> {
+        None
+    }
+    /// The type name of `t` in a float kernel (`float`, `uint`, `int`), or `None`.
+    fn type_name(&self, _t: ElementKind) -> Option<String> {
+        None
+    }
+    /// A boolean spelling of `value != 0` for a value of element type `t` in a float kernel (a float
+    /// compares against a float zero, an integer leaf against an integer zero).
+    fn truthy_of(&self, value: &str, _t: ElementKind) -> String {
+        format!("({value} != 0)")
+    }
+    /// A hoisted temporary of type `ty` (from [`Self::type_name`]) holding `rhs`. A float one must be
+    /// one a compiler may not fuse or reassociate the operations of (GLSL `precise`): the value of a
+    /// float expression is pinned in such a temporary before it is stored.
+    fn temp_typed(&self, ty: &str, name: &str, rhs: &str) -> String {
+        format!("const {ty} {name} = {rhs};")
     }
     /// `x`, of integer type `from`, converted (wrapping) to the compute dtype, or `None` when there is
     /// no spelling. Only asked of a dialect whose [`Self::wide`] is true.

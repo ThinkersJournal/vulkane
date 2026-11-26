@@ -122,10 +122,10 @@ fn the_wide_source_spells_64_bit_types_masks_and_keeps_32_bit_kernels_unchanged(
 fn a_dtype_with_no_spelling_is_a_typed_decline_naming_the_lowered_ones() {
     let mut k = unpopped::kernel::KernelFn::new(
         "f",
-        ElementKind::F64,
+        ElementKind::F16,
         vec![unpopped::kernel::Param::buffer(
             "o",
-            ElementKind::F64,
+            ElementKind::F16,
             unpopped::kernel::BufferRole::Write,
             Some(1),
         )],
@@ -133,7 +133,7 @@ fn a_dtype_with_no_spelling_is_a_typed_decline_naming_the_lowered_ones() {
         unpopped::kernel::Block(vec![]),
     );
     k.launch = Some(unpopped::exec::LaunchShape::new([1, 1, 1], [1, 1, 1]));
-    let err = Glsl.lower_kernel(&k).expect_err("F64 is not lowered");
+    let err = Glsl.lower_kernel(&k).expect_err("F16 is not lowered");
     assert!(
         format!("{err:?}").contains("integer kernels only"),
         "{err:?}"
