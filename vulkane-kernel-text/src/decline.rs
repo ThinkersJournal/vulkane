@@ -113,6 +113,7 @@ fn nested(stmt: &Stmt) -> Option<Declined> {
         | Stmt::MulticastLoadReduce { .. }
         | Stmt::GridDepWait
         | Stmt::GridDepLaunchDependents
+        | Stmt::ProxyFence { .. }
         | Stmt::Fence { .. }
         | Stmt::Mma { .. }
         | Stmt::MatrixLoad { .. }
