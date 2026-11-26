@@ -70,3 +70,23 @@ pub(crate) fn private_index(n: u32, space: MemorySpace) -> KernelFn {
     k.allocs = vec![AllocDecl::new("scratch", space, U32, Extent::Static(4))];
     k
 }
+
+/// The kernel with a read-only `Constant` allocation (its fills dropped, so `check_kernel` admits
+/// it and the refusal under test is the emitter's own).
+#[allow(
+    dead_code,
+    reason = "shared test module: each test binary compiles it whole but uses part of it"
+)]
+pub(crate) fn read_only_constant(n: u32) -> KernelFn {
+    let mut k = private_index(n, MemorySpace::Constant);
+    k.body.0.retain(|s| {
+        !matches!(
+            s,
+            Stmt::Store {
+                place: Place::Alloc { .. },
+                ..
+            }
+        )
+    });
+    k
+}

@@ -17,3 +17,16 @@ components = [
 [[architecture.layer]]
 name       = "runtime"
 components = ["vulkane"]
+
+# Per-file SPDX/licence gate (SUP-016, licence-tools#6). `copyright_expected` names files
+# that legitimately carry a third party's copyright instead of ours; none is waived:
+#   spdx_gate.py           - the gate script copy kept for the fleet comparison
+#   THIRD-PARTY-NOTICES.md - the notices file: other people's licences, credited as written
+#   vk.xml                 - the Khronos Vulkan registry: its provenance and its own licence
+#                            stay credited (CireSnave: "I am not a plageurist.")
+[sup016]
+gate = true
+licence = "MIT OR Apache-2.0"
+extensions = [".rs", ".py", ".wgsl", ".comp", ".vert", ".frag", ".glsl", ".slang", ".hlsl", ".sh"]
+min_files = 100
+copyright_expected = ["spdx_gate.py", "THIRD-PARTY-NOTICES.md", "vk.xml"]

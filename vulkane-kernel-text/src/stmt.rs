@@ -13,7 +13,9 @@ use unpopped::kernel::{BarrierKind, Block, KernelFn, Place, Stmt};
 
 use crate::dialect::Dialect;
 use crate::expr;
-use crate::scope::{Scope, place_ok, refuse};
+use crate::scope::{Scope, place_name, place_ok, refuse};
+
+mod atomic;
 
 /// The text being written.
 struct W<'a> {
@@ -102,12 +104,13 @@ impl W<'_> {
         match s {
             Stmt::Let { .. } | Stmt::Assign { .. } | Stmt::Load { .. } | Stmt::Store { .. } => self.data(s),
             Stmt::Barrier { .. } | Stmt::Fence { .. } => self.sync(s),
+            Stmt::AtomicRmw { .. } | Stmt::AtomicCas { .. } => self.atomic(s),
             Stmt::If { .. } | Stmt::For { .. } | Stmt::While { .. } => self.control(s),
             Stmt::Break => self.emit("break;"),
             Stmt::Continue => self.emit("continue;"),
             Stmt::Return => self.emit("return;"),
             other => Err(self.no(format!(
-                "`Stmt::{}` is not lowered (v1: Let, Load, Assign, Store, Barrier, Fence, control flow)",
+                "`Stmt::{}` is not lowered (v1: Let, Load, Assign, Store, Barrier, Fence, atomics where the dialect spells them, control flow)",
                 stmt_name(other)
             ))),
         }
@@ -129,6 +132,31 @@ impl W<'_> {
         Ok(self.d.index(&name, &idx, is_buffer))
     }
 
+    /// Whether `place` addresses an atomically typed buffer or array.
+    fn is_atomic(&self, place: &Place) -> bool {
+        place_name(place).is_some_and(|n| self.sc.atomic.contains(&n))
+    }
+
+    /// The read of `elem`: itself, or the dialect's atomic load when the buffer is atomically typed.
+    fn read_of(&self, place: &Place, elem: String) -> Result<String, LowerError> {
+        if !self.is_atomic(place) {
+            return Ok(elem);
+        }
+        self.d
+            .atomic_load(&elem)
+            .ok_or_else(|| self.no("an atomically typed buffer has no atomic load here"))
+    }
+
+    /// The write of `value` to `elem`: a plain assignment, or the dialect's atomic store.
+    fn write_of(&self, place: &Place, elem: &str, value: &str) -> Result<String, LowerError> {
+        if !self.is_atomic(place) {
+            return Ok(format!("{elem} = {value};"));
+        }
+        self.d
+            .atomic_store(elem, value)
+            .ok_or_else(|| self.no("an atomically typed buffer has no atomic store here"))
+    }
+
     fn data(&mut self, s: &Stmt) -> Result<(), LowerError> {
         match s {
             Stmt::Let { local, init: v } | Stmt::Assign { local, value: v } => {
@@ -137,12 +165,14 @@ impl W<'_> {
             }
             Stmt::Load { local, place } => {
                 let e = self.element(place)?;
+                let e = self.read_of(place, e)?;
                 self.emit(&format!("l{local} = {e};"))
             }
             Stmt::Store { place, value } => {
                 let e = self.element(place)?;
                 let v = self.expr(value)?;
-                self.emit(&format!("{e} = {v};"))
+                let text = self.write_of(place, &e, &v)?;
+                self.emit(&text)
             }
             _ => unreachable!("`stmt` routes only data statements here"),
         }

@@ -461,6 +461,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      # The pinned toolchain (`rust-toolchain.toml`) must be INSTALLED here: the harness runs `cargo metadata` and probes the
+      # pinned channel, and the ubuntu-26.04 image of 2026-11-26 (20261116.202.1, Rust 1.100.0 preinstalled) no longer has it, so
+      # the self-test failed `every current CI command is classified` and `the toolchain probe answers` (the previous image
+      # passed). Every other Rust job already installs it.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable (branch HEAD)
       # Provisioning is a SEPARATE step from the gate, deliberately. The harness
       # replays these commands locally, and a gate bundled with a `pip install`
       # makes a local verification depend on the network. Same category as the
@@ -686,15 +691,25 @@ jobs:
   spdx:
     name: Every source file declares the licence
     runs-on: ubuntu-latest
+    # 30, was 5: the first `cargo install coderipper` compile exceeds 5 minutes.
+    # The hosted-runner install is UNVERIFIED until this job's log is read.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      # The gate's own controls run FIRST. A checker nobody has watched fail is
-      # a checker nobody has evidence works, and a gate whose parser silently
-      # broke would report a clean tree rather than an error.
+      # The per-file SPDX/licence gate gains CodeRipper's SUP-016 (licence-tools#6,
+      # 159eb406), configured by `[sup016]` in `.coderipper.toml`. The OLD gate stays in
+      # this job ALONGSIDE it, deliberately: `spdx_gate.py` also keeps an extension census
+      # (it flags a new tracked source extension) that SUP-016's static list lacks, and the
+      # hosted-runner install of the new gate is unverified. Drop the old steps only after
+      # the new step's log has been read on a hosted run (pm-kernels 2026-11-25).
       - name: Self-test the SPDX gate
         run: python3 .github/spdx_gate.py --self-test
       - name: Every tracked source file declares the workspace licence
         run: python3 .github/spdx_gate.py
+      - name: Install coderipper 0.48.1
+        run: cargo install coderipper --version 0.48.1 --locked
+      - name: Every source file declares the licence (SUP-016)
+        run: coderipper check SUP-016 --project . --deny medium
 
   # No tracked text file contains a NUL byte (invisible in review, turns a file binary to git).
   # The population is printed; an empty population or a stale BINARY entry fails.
@@ -1013,4 +1028,4 @@ jobs:
   portfolio:
     permissions:
       contents: read
-    uses: ciresnave/coderipper/.github/workflows/portfolio.yml@56b8982c4c8105866db4e972335588a2e362cc69 # installs CodeRipper 0.48.0 (CODERIPPER_VERSION at this SHA; coderipper Cargo.toml says 0.48.1, unpublished)
+    uses: ciresnave/coderipper/.github/workflows/portfolio.yml@467fd259d6d062cba4c5683d310f1a6f2b66e763 # installs CodeRipper 0.48.1 (CODERIPPER_VERSION at 467fd259)

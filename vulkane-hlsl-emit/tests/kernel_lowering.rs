@@ -13,6 +13,8 @@
 //! Without a device, `dxc` or `spirv-val` the tests follow `VULKANE_REQUIRE_DEVICE`,
 //! `VULKANE_REQUIRE_DXC` and `VULKANE_REQUIRE_SPIRV_VAL` rather than passing silently.
 
+#[path = "../../vulkane-spirv-emit/tests/support/atomic_kernel.rs"]
+mod atomic_kernel;
 #[path = "../../vulkane/tests/common/mod.rs"]
 #[allow(dead_code, unreachable_pub, missing_docs)]
 mod common;
@@ -20,13 +22,18 @@ mod common;
 mod gpu;
 #[path = "../../vulkane-spirv-emit/tests/support/grid_kernel.rs"]
 mod grid_kernel;
+#[path = "../../vulkane-spirv-emit/tests/support/private_kernel.rs"]
+mod private_kernel;
 #[path = "../../vulkane-spirv-emit/tests/support/reverse_kernel.rs"]
 mod reverse_kernel;
+#[path = "../../vulkane-spirv-emit/tests/support/subgroup_kernel.rs"]
+mod subgroup_kernel;
 
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-use unpopped::backend::{Backend, GeneratedKernel};
+use unpopped::backend::{Backend, GeneratedKernel, LowerError};
+use unpopped::exec::MemorySpace;
 use unpopped_vocab::ElementKind;
 use vulkane::safe::DeviceFeatures;
 use vulkane_hlsl_emit::Hlsl;
@@ -234,4 +241,192 @@ fn a_non_cubic_3d_launch_writes_every_cell_its_own_ids_on_a_device() {
             k.source
         );
     }
+}
+
+/// Row 8k: a per-thread `Private` array indexed by data, through HLSL; each thread reads its own value.
+#[test]
+fn a_private_array_with_data_dependent_indexing_is_per_thread_on_a_device() {
+    common::require_serialization_lock();
+    let features = DeviceFeatures::new().with_shader_int64();
+    let Some(gpu) = gpu::Gpu::open_with("hlsl_kernel_private", Some((&features, "shaderInt64")))
+    else {
+        return; // skip already declared
+    };
+    let n = WORKGROUP_SIZE;
+    let k = Hlsl
+        .lower_kernel(&private_kernel::private_index(n, MemorySpace::Private))
+        .expect("the HLSL backend lowers the private-array kernel");
+    let Some(words) = dxc_words(&k) else {
+        return; // no dxc, declared above
+    };
+    let input: Vec<u32> = (0..n).map(|t| (t * 5 + 1) % 4).collect();
+    let want: Vec<u32> = (0..n).map(|t| t + 10 * input[t as usize]).collect();
+    let got = gpu.run_params(&k.name, &words, &[&input], &params_bytes(&k));
+    assert_eq!(got, want, "{}", k.source);
+    // Control: the indices differ between threads, so a wrong-index lowering could not pass.
+    assert!(input.iter().any(|&i| i != input[0]));
+}
+
+/// Row 8k decline: a `Constant` allocation has no initialiser in the IR.
+#[test]
+fn a_constant_allocation_is_a_typed_decline() {
+    match Hlsl.lower_kernel(&private_kernel::read_only_constant(WORKGROUP_SIZE)) {
+        Err(LowerError::UnsupportedKernel { detail }) => {
+            eprintln!("hlsl constant decline: {detail}");
+        }
+        other => panic!("wanted an UnsupportedKernel, got {other:?}"),
+    }
+}
+
+/// Row 8d: 1024 contended atomic updates through HLSL (`Interlocked*`); the atomic kernel is exact and
+/// the plain load/add/store control loses updates on the same device (reported, not asserted).
+#[test]
+fn contended_atomics_are_exact_on_a_device() {
+    common::require_serialization_lock();
+    let features = DeviceFeatures::new().with_shader_int64();
+    let Some(gpu) = gpu::Gpu::open_with("hlsl_kernel_atomic", Some((&features, "shaderInt64")))
+    else {
+        return; // skip already declared
+    };
+    let run = |racy: bool| -> Option<Vec<u32>> {
+        let k = Hlsl
+            .lower_kernel(&atomic_kernel::atomic_kernel(racy))
+            .expect("the HLSL backend lowers the atomic kernel");
+        let words = dxc_words(&k)?;
+        Some(gpu.run_grid_params(
+            &k.name,
+            &words,
+            4,
+            [atomic_kernel::BLOCKS, 1, 1],
+            Some(&params_bytes(&k)),
+        ))
+    };
+    let Some(got) = run(false) else {
+        return; // no dxc, declared above
+    };
+    let (s, n) = (atomic_kernel::SENTINEL, atomic_kernel::THREADS);
+    assert_eq!(got[0], s.wrapping_add(n), "lost updates");
+    assert_eq!(got[1], 0, "unsigned minimum of the global ids");
+    assert!((1..=n).contains(&got[2]), "cas winner wrote {}", got[2]);
+    assert_eq!(
+        got[3],
+        s.wrapping_add(1),
+        "exactly one compare-exchange winner"
+    );
+    if let Some(racy) = run(true) {
+        eprintln!(
+            "hlsl kernel_atomic control: a plain increment reached {} of {n}",
+            racy[0].wrapping_sub(s)
+        );
+    }
+}
+
+/// The `Interlocked` spellings are in the source (the same query finds the control without the add).
+#[test]
+fn the_atomic_kernel_spells_the_interlocked_calls_and_the_control_does_not() {
+    let src = |racy| {
+        Hlsl.lower_kernel(&atomic_kernel::atomic_kernel(racy))
+            .expect("lowers")
+            .source
+    };
+    let (a, r) = (src(false), src(true));
+    for f in [
+        "InterlockedAdd",
+        "InterlockedMin",
+        "InterlockedCompareExchange",
+    ] {
+        assert!(a.contains(f), "{a}");
+    }
+    assert_eq!(a.matches("InterlockedAdd").count(), 2, "{a}");
+    assert_eq!(r.matches("InterlockedAdd").count(), 1, "{r}");
+}
+
+/// Row 8c: `LaneId`, `SubgroupId` and `SubgroupSize` through HLSL (`WaveGetLaneIndex`,
+/// `WaveGetLaneCount`; the subgroup index is the flat thread index over the size, exact for the
+/// kernel's one-dimensional block). Slang already lowered them; the device test is this lane's.
+#[test]
+fn lane_subgroup_and_size_ids_match_the_device_on_a_device() {
+    common::require_serialization_lock();
+    let features = DeviceFeatures::new().with_shader_int64();
+    let Some(gpu) = gpu::Gpu::open_with("hlsl_kernel_subgroup", Some((&features, "shaderInt64")))
+    else {
+        return; // skip already declared
+    };
+    let size = gpu.subgroup_size();
+    let k = Hlsl
+        .lower_kernel(&subgroup_kernel::subgroup_kernel(1, 128))
+        .expect("the HLSL backend lowers the subgroup kernel");
+    let Some(words) = dxc_words(&k) else {
+        return; // no dxc, declared above
+    };
+    let got = gpu.run_grid_params(
+        &k.name,
+        &words,
+        subgroup_kernel::BLOCK as usize,
+        [1, 1, 1],
+        Some(&params_bytes(&k)),
+    );
+    for (t, &g) in got.iter().enumerate() {
+        let want = subgroup_kernel::expected(t as u32, size);
+        assert_eq!(
+            g, want,
+            "thread {t} (subgroup size {size})
+{}",
+            k.source
+        );
+    }
+}
+
+/// The wave intrinsics are in the source.
+#[test]
+fn the_subgroup_kernel_spells_the_wave_intrinsics() {
+    let src = Hlsl
+        .lower_kernel(&subgroup_kernel::subgroup_kernel(1, 128))
+        .expect("lowers")
+        .source;
+    for w in ["WaveGetLaneIndex()", "WaveGetLaneCount()"] {
+        assert!(src.contains(w), "{src}");
+    }
+}
+
+/// Mutation: the subgroup index computed with a size of 1 (`gi_ / 1u`) must be caught by the device
+/// check, so the exact comparison in the test above discriminates.
+#[test]
+fn a_wrong_subgroup_index_is_caught_by_the_device_check() {
+    common::require_serialization_lock();
+    let features = DeviceFeatures::new().with_shader_int64();
+    let Some(gpu) =
+        gpu::Gpu::open_with("hlsl_kernel_subgroup_mut", Some((&features, "shaderInt64")))
+    else {
+        return;
+    };
+    let size = gpu.subgroup_size();
+    let k = Hlsl
+        .lower_kernel(&subgroup_kernel::subgroup_kernel(1, 128))
+        .expect("lowers");
+    let anchor = "(gi_ / WaveGetLaneCount())";
+    assert_eq!(k.source.matches(anchor).count(), 1, "{}", k.source);
+    let mutant = GeneratedKernel::new(
+        k.name.clone(),
+        k.source.replace(anchor, "(gi_ / ((uint)1))"),
+    );
+    let Some(words) = dxc_words(&mutant) else {
+        return;
+    };
+    let got = gpu.run_grid_params(
+        &k.name,
+        &words,
+        subgroup_kernel::BLOCK as usize,
+        [1, 1, 1],
+        Some(&params_bytes(&k)),
+    );
+    let wrong = got
+        .iter()
+        .enumerate()
+        .filter(|(t, g)| **g != subgroup_kernel::expected(*t as u32, size))
+        .count();
+    assert!(
+        wrong > 0,
+        "the mutant matched the expected values everywhere"
+    );
 }

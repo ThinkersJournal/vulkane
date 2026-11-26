@@ -3,7 +3,7 @@
 
 use unpopped::backend::{Decline, DeclinedOp, LowerError, Lowering, Spelling, lower_dag};
 use unpopped::exec::ExecId;
-use unpopped::ir::{ArithOp, BinaryOp, ExprDag, ScalarExpr};
+use unpopped::ir::{ArithOp, BinaryOp, CastSpec, ExprDag, RoundMode, Saturation, ScalarExpr};
 use unpopped::kernel::KernelFn;
 use unpopped::types::Ty;
 use unpopped_vocab::ElementKind;
@@ -29,6 +29,8 @@ impl Spell<'_> {
     fn exec(&self, id: ExecId) -> Result<Spelling, LowerError> {
         let signed = self.sc.signed;
         match launch_const(self.sc, id) {
+            // A wide kernel keeps an execution id the `u32` the IR types it as.
+            Some(v) if self.d.wide() => Ok(Spelling::Spelled(format!("{v}u"))),
             Some(v) => Ok(Spelling::Spelled(self.d.lit(i64::from(v), signed))),
             None => match self.d.exec(id, signed) {
                 Some(s) => Ok(Spelling::Spelled(s)),
@@ -56,12 +58,33 @@ impl Spell<'_> {
         }
     }
 
+    /// A wrapping integer `Cast` to the compute dtype, or a decline.
+    fn cast(&self, x: &str, from: ElementKind, spec: CastSpec) -> Result<Spelling, LowerError> {
+        if spec.to != self.kernel.compute
+            || spec.sat != Saturation::Wrap
+            || spec.round != RoundMode::NearestEven
+        {
+            return declined(format!(
+                "a Cast to {:?} with {:?}/{:?} is not lowered (wrapping, to the compute dtype only)",
+                spec.to, spec.round, spec.sat
+            ));
+        }
+        match self.d.cast_to_compute(x, from) {
+            Some(s) => Ok(Spelling::Spelled(s)),
+            None => declined(format!(
+                "a Cast from {from:?} is not lowered in {}",
+                self.d.name()
+            )),
+        }
+    }
+
     fn const_int(&self, v: i64, t: ElementKind) -> Result<Spelling, LowerError> {
         let signed = self.sc.signed;
-        let fits = if signed {
-            i32::try_from(v).is_ok()
-        } else {
-            u32::try_from(v).is_ok()
+        let fits = match (self.d.wide(), signed) {
+            (true, true) => true,
+            (true, false) => v >= 0,
+            (false, true) => i32::try_from(v).is_ok(),
+            (false, false) => u32::try_from(v).is_ok(),
         };
         if t == self.kernel.compute && fits {
             Ok(Spelling::Spelled(self.d.lit(v, signed)))
@@ -99,7 +122,9 @@ pub(crate) fn lower(
     let const_int = |v: i64, t: ElementKind| sp.const_int(v, t);
     let exec = |id| sp.exec(id);
     let temp = |_: &str, name: &str, rhs: &str| d.temp(name, rhs, signed);
-    let lowering = Lowering::builder(&leaf, &unary, &binary)
+    let cast = |x: String, from: ElementKind, spec: CastSpec| sp.cast(&x, from, spec);
+    let type_name = |t: ElementKind| (t == kernel.compute).then(String::new);
+    let builder = Lowering::builder(&leaf, &unary, &binary)
         .arith(&arith)
         .select(&select)
         .constant(&constant)
@@ -108,8 +133,14 @@ pub(crate) fn lower(
         .local(&local)
         .exec(&exec)
         .local_types(&tys)
-        .compute_dtype(kernel.compute)
-        .build();
+        .compute_dtype(kernel.compute);
+    // Only a 64-bit kernel has a `Cast` seam: its execution ids and narrower operands are reached
+    // through one. A 32-bit kernel keeps the walker's typed decline.
+    let lowering = if d.wide() {
+        builder.cast(&cast).type_name(&type_name).build()
+    } else {
+        builder.build()
+    };
     lower_dag(&ExprDag::from_expr(e), d.name(), &lowering)
 }
 

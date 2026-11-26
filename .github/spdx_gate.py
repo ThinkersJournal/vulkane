@@ -256,7 +256,9 @@ def tracked_sources(root: pathlib.Path) -> list[str] | None:
 #: nothing is vendored; not contrived in the three repos this gate also runs in,
 #: two of which vendor third-party source.
 COPYRIGHT_EXPECTED = ("LICENSE", "LICENCE", "COPYING", "CHANGELOG",
-                      "spdx_gate.py", "NOTICE")
+                      "spdx_gate.py", "NOTICE",
+                      # `copyright_expected` is a key of CodeRipper's SUP-016 config.
+                      ".coderipper.toml")
 
 
 #: 🔴 THIRD-PARTY NOTICES THAT HAVE BEEN LOOKED AT AND RULED ON. Distinct from
