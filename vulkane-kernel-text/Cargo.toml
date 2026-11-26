@@ -1,6 +1,6 @@
 [package]
 name         = "vulkane-kernel-text"
-version      = "0.25.7"
+version      = "0.26.0"
 edition      = "2024"
 rust-version = "1.85"
 authors      = ["Eric Evans <CireSnave@gmail.com>"]
