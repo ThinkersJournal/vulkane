@@ -437,7 +437,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b87fb3d5c75016d9bba8700267b75d37a6bd8f5b0b0a108a7f7d7a30843b031"
 dependencies = [
- "kiss-vulkan-vocab 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "kiss-vulkan-vocab 0.6.0",
  "unpopped",
  "unpopped-vocab",
 ]
@@ -721,12 +721,12 @@ dependencies = [
 [[package]]
 name = "kiss-vulkan-vocab"
 version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7eb360dd97d6697898c9f15ab46377a84eef55a4dbb02f8a2846c1fc36fce1a0"
 
 [[package]]
 name = "kiss-vulkan-vocab"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7eb360dd97d6697898c9f15ab46377a84eef55a4dbb02f8a2846c1fc36fce1a0"
+version = "0.26.0"
 
 [[package]]
 name = "lalrpop-util"
@@ -2062,7 +2062,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vulkan_gen"
-version = "0.5.2"
+version = "0.26.0"
 dependencies = [
  "regex",
  "roxmltree 0.21.2",
@@ -2077,7 +2077,7 @@ name = "vulkane"
 version = "0.26.0"
 dependencies = [
  "fishstringer-kernels-source",
- "kiss-vulkan-vocab 0.6.0",
+ "kiss-vulkan-vocab 0.26.0",
  "libloading 0.9.1",
  "naga",
  "raw-window-handle",
@@ -2199,7 +2199,7 @@ dependencies = [
 
 [[package]]
 name = "vulkane_derive"
-version = "0.1.3"
+version = "0.26.0"
 dependencies = [
  "proc-macro2",
  "quote",
