@@ -151,6 +151,9 @@ fn declined_naming(k: &KernelFn, needle: &str) {
             | unpopped::backend::LowerError::UnsupportedOp { detail },
         ) => {
             assert!(detail.contains(needle), "wanted `{needle}` in `{detail}`");
+            // The refusal must come from the emitter or the walker, not the kernel checker (whose text can already
+            // name the construct, so a test of the checker would pass without reaching the emitter's arm).
+            assert!(!detail.contains("check_kernel refused"), "{detail}");
         }
         other => panic!("wanted an UnsupportedKernel naming `{needle}`, got {other:?}"),
     }
