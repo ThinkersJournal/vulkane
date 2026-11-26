@@ -20,6 +20,8 @@ unpopped-vocab      = "~0.58.0"
 fishstringer-slang-emit = "~0.7.0"
 
 [dev-dependencies]
+# The published decline fixtures (ROADMAP 9h): one checker-valid kernel or module per `Stmt` variant.
+unpopped = { version = "~0.58.5", features = ["fixtures"] }
 # The round-trip test lifts emitted HLSL back to the IR with the HLSL frontend (needs unpopped's `convert`).
 unpopped-convert = "~0.58.0"
 vulkane-hlsl-parse  = { path = "../vulkane-hlsl-parse" }

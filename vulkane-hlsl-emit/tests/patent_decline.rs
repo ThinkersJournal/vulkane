@@ -1,241 +1,191 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! The statements declined for possible patent exposure (board 434 C extended; NVIDIA US11803380B2, US12204897B2)
-//! are refused **by name** with a typed error, at the top level and at any `If`/`For`/`While` depth.
+//! The statements declined for possible patent exposure (board 434 C and its extension, thirteen names; NVIDIA
+//! US11294713B2, US12118382B2, US11803380B2, US12204897B2, US12710961B2) are refused **by name** with a typed error,
+//! at the top level and at any `If`/`For`/`While` depth.
 //!
-//! Controls: a kernel without a declined statement is still refused (this emitter does not lower kernels yet) but the
-//! refusal does NOT carry the declined marker, so the assertion below can tell the two refusals apart; and the
-//! walk visits all seven names, so a name dropped from the table fails here.
+//! The fixtures are the PUBLISHED ones, `unpopped::fixtures` (unpopped 0.58.5, feature `fixtures`; ROADMAP 9h): one
+//! checker-valid kernel or module per `Stmt` variant. Every test asserts the fixture passes the checker first, so the
+//! refusal seen here is the EMITTER's own text and never `check_kernel refused ...`.
+//!
+//! Controls: every statement that is NOT declined is run through the same emitter and its result carries no declined
+//! marker; and the walk visits all thirteen names, so a name dropped from the table fails here.
 
 use unpopped::backend::{Backend, LowerError};
-use unpopped::exec::{AllocDecl, Extent, LaunchShape, MemorySpace, Scope};
+use unpopped::fixtures::{Fixture, fixture, fixtures, variant_name};
 use unpopped::ir::{ReduceOp, ScalarExpr};
-use unpopped::kernel::{Block, BufferRole, CollectiveKind, KernelFn, Param, Place, Stmt};
+use unpopped::kernel::{
+    Block, CollectiveKind, KernelFn, LocalDecl, Stmt, check_kernel, check_module,
+};
 use unpopped_vocab::ElementKind;
 use vulkane_hlsl_emit::Hlsl;
 
 const MARKER_434C: &str = "declined: possible exposure, board 434 C";
 const MARKER_EXT: &str = "declined: possible exposure, board 434 C extended";
 
-/// A nesting shape: its label and how it wraps a statement.
-type Shape = (&'static str, Box<dyn Fn(Stmt) -> Vec<Stmt>>);
+/// A nesting shape: its label and how it wraps a body (the extra local is the loop variable of a `For`).
+type Shape = (&'static str, fn(Vec<Stmt>, u32) -> Vec<Stmt>);
+
+/// A declined statement: the name the refusal must carry and the ruling text it must carry.
+type Case = (&'static str, &'static str);
+
+/// The five of board 434 C, then the eight of its extension (`CopyUnpack` since unpopped 0.58).
+const DECLINED: [Case; 13] = [
+    ("CopyAsync", MARKER_434C),
+    ("AsyncCommit", MARKER_434C),
+    ("AsyncWait", MARKER_434C),
+    ("CollectiveTuple", MARKER_434C),
+    ("Collective", MARKER_434C),
+    ("MbarInit", MARKER_EXT),
+    ("MbarArrive", MARKER_EXT),
+    ("MbarCompleteTx", MARKER_EXT),
+    ("MbarWait", MARKER_EXT),
+    ("CopyBulk", MARKER_EXT),
+    ("Tcgen05Commit", MARKER_EXT),
+    ("WgmmaWait", MARKER_EXT),
+    ("CopyUnpack", MARKER_EXT),
+];
 
 fn u32c(v: u64) -> ScalarExpr {
     ScalarExpr::ConstInt(v as _, ElementKind::U32)
 }
 
-fn bar() -> Place {
-    Place::Alloc {
-        alloc: 0,
-        index: u32c(0),
+/// The function of the fixture that holds the statement: the one kernel, or the module's entry.
+fn entry(f: &Fixture) -> KernelFn {
+    match f {
+        Fixture::Kernel(k) => k.clone(),
+        Fixture::Module { module, entry } => module.fns[*entry as usize].clone(),
+        other => panic!("a fixture shape this test does not know: {other:?}"),
     }
 }
 
-fn kernel(body: Vec<Stmt>) -> KernelFn {
-    let mut k = KernelFn::new(
-        "patent",
-        ElementKind::U32,
-        vec![Param::buffer(
-            "out",
-            ElementKind::U32,
-            BufferRole::ReadWrite,
-            Some(1),
-        )],
-        vec![],
-        Block(body),
-    )
-    .with_launch(LaunchShape::new([2, 1, 1], [1, 1, 1]));
-    k.allocs = vec![AllocDecl::new(
-        "bar",
-        MemorySpace::Shared,
-        ElementKind::U64,
-        Extent::Static(1),
-    )];
-    k
+/// The fixture with its entry function replaced.
+fn with_entry(f: &Fixture, k: KernelFn) -> Fixture {
+    match f {
+        Fixture::Kernel(_) => Fixture::Kernel(k),
+        Fixture::Module { module, entry } => {
+            let mut module = module.clone();
+            module.fns[*entry as usize] = k;
+            Fixture::Module {
+                module,
+                entry: *entry,
+            }
+        }
+        other => panic!("a fixture shape this test does not know: {other:?}"),
+    }
 }
 
-/// A declined statement: the name the refusal must carry, the ruling text it must carry, and the statement.
-type Case = (&'static str, &'static str, Stmt);
-
-/// The five of board 434 C.
-fn declined_434c() -> Vec<Case> {
-    vec![
-        (
-            "CopyAsync",
-            MARKER_434C,
-            Stmt::CopyAsync {
-                dst: bar(),
-                src: bar(),
-                elems: 1,
-                valid: None,
-                cache: Default::default(),
-                l2_prefetch: None,
-            },
-        ),
-        ("AsyncCommit", MARKER_434C, Stmt::AsyncCommit),
-        ("AsyncWait", MARKER_434C, Stmt::AsyncWait { pending: 0 }),
-        (
-            "CollectiveTuple",
-            MARKER_434C,
-            Stmt::CollectiveTuple {
-                kind: CollectiveKind::ReduceWith { combine: 0 },
-                values: vec![u32c(1), u32c(2)],
-                results: vec![0, 1],
-                scope: Scope::Subgroup,
-            },
-        ),
-        (
-            "Collective",
-            MARKER_434C,
-            Stmt::Collective {
-                kind: CollectiveKind::Reduce(ReduceOp::Sum),
-                value: u32c(1),
-                result: 0,
-                scope: Scope::Subgroup,
-            },
-        ),
-    ]
+/// Run the checker that suits the fixture, and fail with its text when it refuses.
+fn assert_valid(what: &str, f: &Fixture) {
+    let r = match f {
+        Fixture::Kernel(k) => check_kernel(k),
+        Fixture::Module { module, entry } => check_module(module, *entry),
+        other => panic!("a fixture shape this test does not know: {other:?}"),
+    };
+    assert!(
+        r.is_ok(),
+        "{what}: the fixture must be checker-valid: {r:?}"
+    );
 }
 
-/// The seven of the 2026-11-16 extension, and `CopyUnpack` (unpopped 0.58).
-fn declined_ext() -> Vec<Case> {
-    let ext = MARKER_EXT;
-    vec![
-        (
-            "MbarInit",
-            ext,
-            Stmt::MbarInit {
-                bar: bar(),
-                count: u32c(1),
-            },
-        ),
-        (
-            "MbarArrive",
-            ext,
-            Stmt::MbarArrive {
-                bar: bar(),
-                tx: None,
-            },
-        ),
-        (
-            "MbarCompleteTx",
-            ext,
-            Stmt::MbarCompleteTx {
-                bar: bar(),
-                bytes: u32c(4),
-            },
-        ),
-        (
-            "MbarWait",
-            ext,
-            Stmt::MbarWait {
-                bar: bar(),
-                parity: u32c(0),
-            },
-        ),
-        (
-            "CopyBulk",
-            ext,
-            Stmt::CopyBulk {
-                dst: bar(),
-                src: bar(),
-                elems: 1,
-                bar: bar(),
-            },
-        ),
-        ("Tcgen05Commit", ext, Stmt::Tcgen05Commit { bar: bar() }),
-        ("WgmmaWait", ext, Stmt::WgmmaWait { pending: 0 }),
-        // INTERIM until `unpopped::fixtures` (ROADMAP 9h): this fixture is not checker-valid and has no vacuity mutant, so
-        // it proves the by-name refusal only, not that the emitter arm is reached on a valid kernel.
-        (
-            "CopyUnpack",
-            ext,
-            Stmt::CopyUnpack {
-                dst: bar(),
-                src: bar(),
-                groups: 1,
-                bar: bar(),
-            },
-        ),
-    ]
+fn contains(block: &Block, name: &str) -> bool {
+    block.0.iter().any(|s| {
+        variant_name(s) == name
+            || match s {
+                Stmt::If { then, els, .. } => contains(then, name) || contains(els, name),
+                Stmt::For { body, .. } | Stmt::While { body, .. } => contains(body, name),
+                _ => false,
+            }
+    })
 }
 
-/// Every declined statement.
-fn declined() -> Vec<Case> {
-    let mut all = declined_434c();
-    all.extend(declined_ext());
-    all
-}
-
-fn refusal(body: Vec<Stmt>) -> String {
-    match Hlsl.lower_kernel(&kernel(body)) {
+fn refusal_of(k: &KernelFn) -> String {
+    match Hlsl.lower_kernel(k) {
         Err(LowerError::UnsupportedKernel { detail }) => detail,
         other => panic!("expected the typed UnsupportedKernel refusal, got {other:?}"),
     }
 }
 
-fn nest_if_then(s: Stmt) -> Stmt {
-    Stmt::If {
+fn nest_if_then(b: Vec<Stmt>, _: u32) -> Vec<Stmt> {
+    vec![Stmt::If {
         cond: u32c(1),
-        then: Block(vec![s]),
+        then: Block(b),
         els: Block(vec![]),
-    }
+    }]
 }
 
-fn nest_if_else(s: Stmt) -> Stmt {
-    Stmt::If {
+fn nest_if_else(b: Vec<Stmt>, _: u32) -> Vec<Stmt> {
+    vec![Stmt::If {
         cond: u32c(1),
         then: Block(vec![]),
-        els: Block(vec![s]),
-    }
+        els: Block(b),
+    }]
 }
 
-fn nest_for(s: Stmt) -> Stmt {
-    Stmt::For {
-        local: 0,
+fn nest_for(b: Vec<Stmt>, local: u32) -> Vec<Stmt> {
+    vec![Stmt::For {
+        local,
         start: u32c(0),
         end: u32c(2),
         step: u32c(1),
         unroll: Default::default(),
-        body: Block(vec![s]),
-    }
+        body: Block(b),
+    }]
 }
 
-fn nest_while(s: Stmt) -> Stmt {
-    Stmt::While {
+fn nest_while(b: Vec<Stmt>, _: u32) -> Vec<Stmt> {
+    vec![Stmt::While {
         cond: u32c(1),
-        body: Block(vec![s]),
-    }
+        body: Block(b),
+    }]
+}
+
+fn nest_deep(b: Vec<Stmt>, local: u32) -> Vec<Stmt> {
+    nest_for(nest_if_else(nest_while(b, local), local), local)
+}
+
+const SHAPES: [Shape; 6] = [
+    ("top level", |b, _| b),
+    ("if then", nest_if_then),
+    ("if else", nest_if_else),
+    ("for", nest_for),
+    ("while", nest_while),
+    ("for>if>while", nest_deep),
+];
+
+/// The fixture with the whole entry body wrapped by `shape`; the loop variable is a fresh `U32` local.
+fn nested(f: &Fixture, shape: fn(Vec<Stmt>, u32) -> Vec<Stmt>) -> Fixture {
+    let mut k = entry(f);
+    let local = k.locals.len() as u32;
+    k.locals.push(LocalDecl::scalar(ElementKind::U32));
+    k.body = Block(shape(k.body.0.clone(), local));
+    with_entry(f, k)
 }
 
 #[test]
 fn each_declined_statement_is_refused_by_name_at_every_depth() {
     assert_eq!(
-        declined().len(),
+        DECLINED.len(),
         13,
         "the declined list is thirteen statements (twelve, and `CopyUnpack` since unpopped 0.58)"
     );
-    for (name, marker, _) in declined() {
-        let shapes: Vec<Shape> = vec![
-            ("top level", Box::new(|s| vec![s])),
-            ("if then", Box::new(|s| vec![nest_if_then(s)])),
-            ("if else", Box::new(|s| vec![nest_if_else(s)])),
-            ("for", Box::new(|s| vec![nest_for(s)])),
-            ("while", Box::new(|s| vec![nest_while(s)])),
-            (
-                "for>if>while",
-                Box::new(|s| vec![nest_for(nest_if_else(nest_while(s)))]),
-            ),
-        ];
-        for (where_, build) in shapes {
-            let stmt = declined()
-                .into_iter()
-                .find(|(n, _, _)| *n == name)
-                .map(|(_, _, s)| s)
-                .expect("the statement exists");
-            let detail = refusal(build(stmt));
+    for (name, marker) in DECLINED {
+        let base = fixture(name).unwrap_or_else(|| panic!("unpopped::fixtures has no `{name}`"));
+        assert_valid(name, &base);
+        assert!(
+            contains(&entry(&base).body, name),
+            "{name}: the fixture's entry function must hold the statement itself"
+        );
+        for (where_, shape) in SHAPES {
+            let f = nested(&base, shape);
+            assert_valid(&format!("{name} at {where_}"), &f);
+            let detail = refusal_of(&entry(&f));
             assert!(
                 marker == MARKER_EXT || !detail.contains("extended"),
                 "{name}: a board 434 C refusal must not claim the extension: {detail}"
+            );
+            assert!(
+                !detail.contains("check_kernel refused"),
+                "{name} at {where_}: the refusal must be the emitter's own, got: {detail}"
             );
             assert!(
                 detail.contains(&format!("Stmt::{name}")) && detail.contains(marker),
@@ -246,13 +196,61 @@ fn each_declined_statement_is_refused_by_name_at_every_depth() {
 }
 
 #[test]
-fn a_kernel_without_a_declined_statement_is_refused_without_the_marker() {
-    // The control: the same walk, no declined statement. It must not be mistaken for one.
-    let detail = refusal(vec![nest_for(nest_if_then(Stmt::Return))]);
+fn every_collective_kind_is_refused_by_name_the_new_exclusive_scans_included() {
+    // unpopped 0.58.4 added exclusive Max/Min/Prod scans and a Prod fold. A non-NVIDIA emitter declines the WHOLE
+    // `Collective` statement by name whatever its kind (board 434 C; board 506 holds subgroup scans for non-NVIDIA).
+    let base = fixture("Collective").expect("a Collective fixture");
+    let mut kinds: Vec<(String, CollectiveKind)> = Vec::new();
+    for op in [ReduceOp::Sum, ReduceOp::Max, ReduceOp::Min, ReduceOp::Prod] {
+        kinds.push((format!("Reduce({op:?})"), CollectiveKind::Reduce(op)));
+        for exclusive in [false, true] {
+            kinds.push((
+                format!("Scan({op:?}, exclusive={exclusive})"),
+                CollectiveKind::Scan { op, exclusive },
+            ));
+        }
+    }
+    for (label, kind) in kinds {
+        let mut k = entry(&base);
+        let mut replaced = 0;
+        for s in &mut k.body.0 {
+            if let Stmt::Collective { kind: slot, .. } = s {
+                *slot = kind.clone();
+                replaced += 1;
+            }
+        }
+        assert_eq!(replaced, 1, "the fixture holds exactly one Collective");
+        let f = with_entry(&base, k);
+        assert_valid(&label, &f);
+        let detail = refusal_of(&entry(&f));
+        assert!(
+            detail.contains("Stmt::Collective") && detail.contains(MARKER_434C),
+            "{label}: must be refused by name, got: {detail}"
+        );
+    }
+}
+
+#[test]
+fn a_statement_that_is_not_declined_never_carries_the_marker() {
+    // The control: the same emitter on every OTHER statement's fixture. It may lower or refuse them for its own
+    // reasons, but it must never mistake one for a declined statement.
+    let declined: Vec<&str> = DECLINED.iter().map(|(n, _)| *n).collect();
+    let mut seen = 0;
+    for (name, f) in fixtures() {
+        if declined.contains(&name) {
+            continue;
+        }
+        assert_valid(name, &f);
+        seen += 1;
+        if let Err(LowerError::UnsupportedKernel { detail }) = Hlsl.lower_kernel(&entry(&f)) {
+            assert!(
+                !detail.contains("declined: possible exposure"),
+                "{name} is not declined but its refusal carries the marker: {detail}"
+            );
+        }
+    }
     assert!(
-        !detail.contains(MARKER_434C) && !detail.contains("Stmt::"),
-        "an innocent kernel must not carry the declined marker: {detail}"
+        seen >= 30,
+        "the control must run over the other statements, ran over {seen}"
     );
-    let empty = refusal(vec![]);
-    assert!(!empty.contains(MARKER_434C), "{empty}");
 }
