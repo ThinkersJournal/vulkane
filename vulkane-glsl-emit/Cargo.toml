@@ -1,6 +1,6 @@
 [package]
 name         = "vulkane-glsl-emit"
-version      = "0.25.7"
+version      = "0.26.0"
 edition      = "2024"
 rust-version = "1.85"
 authors      = ["Eric Evans <CireSnave@gmail.com>"]
@@ -14,9 +14,9 @@ readme       = "README.md"
 include      = ["src/**", "README.md", "LICENSE-*"]
 
 [dependencies]
-unpopped       = "~0.56.2"
-unpopped-vocab = "~0.56.2"
-vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.25" }
+unpopped       = "~0.57.0"
+unpopped-vocab = "~0.57.0"
+vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.26" }
 
 [dev-dependencies]
 # The live-device test opens a device through the safe wrapper (and its shared `tests/common`).
