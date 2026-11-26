@@ -6,7 +6,7 @@ use unpopped::exec::{Extent, MemorySpace};
 use unpopped::kernel::{KernelFn, Param, ParamKind, check_kernel};
 
 use super::refuse;
-use crate::ops::Family;
+use crate::family::Family;
 
 /// Whether this slice can lower `kernel`: the dtype family, launch block and grid, or a decline.
 pub(super) fn check_scope(kernel: &KernelFn) -> Result<(Family, [u32; 3], [u32; 3]), LowerError> {
@@ -14,12 +14,12 @@ pub(super) fn check_scope(kernel: &KernelFn) -> Result<(Family, [u32; 3], [u32; 
         detail: format!("check_kernel refused kernel `{}`: {e:?}", kernel.name),
     })?;
     let fam = match Family::of(kernel.compute) {
-        Some(f) if !f.is_float() && !f.is_narrow() => f,
+        Some(f) if !f.is_narrow() => f,
         _ => {
             return Err(refuse(
                 kernel,
                 format!(
-                    "v1 lowers integer kernels only; compute dtype is {:?}",
+                    "v1 lowers F16, F32, F64, I32, U32, I64 and U64 kernels only; compute dtype is {:?}",
                     kernel.compute
                 ),
             ));
@@ -38,6 +38,39 @@ pub(super) fn check_scope(kernel: &KernelFn) -> Result<(Family, [u32; 3], [u32; 
     check_allocs(kernel, fam)?;
     check_params_and_locals(kernel, fam)?;
     Ok((fam, launch.block, launch.grid))
+}
+
+/// Whether a buffer element or local of type `elem` may appear in a kernel computing at `fam`: the
+/// compute dtype itself, an 8/16-bit integer (reached by a `Cast`), and in a float kernel also the
+/// other float width and the 32-bit integers (the operands and results of a conversion).
+fn storage_ok(fam: Family, elem: unpopped_vocab::ElementKind) -> bool {
+    let Some(f) = Family::of(elem) else {
+        return false;
+    };
+    f == fam
+        || f.is_narrow()
+        || (fam.is_float() && (f.is_float() || matches!(f, Family::I32 | Family::U32)))
+}
+
+/// The float widths a float kernel uses (compute dtype, and any `F32`/`F64` buffer or local), each
+/// needing its float controls and, at 64, `Float64`.
+pub(super) fn float_widths(kernel: &KernelFn, fam: Family) -> Vec<u32> {
+    let mut widths = vec![fam.bits()];
+    let elems = kernel
+        .params
+        .iter()
+        .filter_map(|p| match &p.kind {
+            ParamKind::Buffer { elem, .. } => Some(*elem),
+            _ => None,
+        })
+        .chain(kernel.locals.iter().map(|l| l.elem));
+    for f in elems.filter_map(Family::of).filter(|f| f.is_float()) {
+        if !widths.contains(&f.bits()) {
+            widths.push(f.bits());
+        }
+    }
+    widths.sort_unstable();
+    widths
 }
 
 /// A subgroup size range must hold a size a Vulkan device can have: a power of two from 1 to 128.
@@ -65,6 +98,10 @@ fn check_subgroup_range(
 
 /// The index of the scalar parameter that declares `local`, when its type is the compute dtype.
 pub(super) fn extent_param(kernel: &KernelFn, local: u32, fam: Family) -> Option<usize> {
+    if fam.is_half() {
+        // An extent is a `u32` specialization constant reached by a bitcast, which a half cannot be.
+        return None;
+    }
     kernel.params.iter().position(|p| {
         matches!(&p.kind, ParamKind::Scalar { ty, local: l }
             if *l == local && Family::of(*ty) == Some(fam))
@@ -123,11 +160,7 @@ fn sizes_array(kernel: &KernelFn, local: u32) -> bool {
 /// One parameter: a buffer of the compute dtype, or an extent scalar of it.
 fn check_param(kernel: &KernelFn, p: &Param, fam: Family) -> Result<(), LowerError> {
     match &p.kind {
-        ParamKind::Buffer { elem, .. }
-            if Family::of(*elem).is_some_and(|f| f == fam || f.is_narrow()) =>
-        {
-            Ok(())
-        }
+        ParamKind::Buffer { elem, .. } if storage_ok(fam, *elem) => Ok(()),
         ParamKind::Buffer { elem, .. } => Err(refuse(
             kernel,
             format!(
@@ -156,7 +189,7 @@ pub(super) fn check_params_and_locals(kernel: &KernelFn, fam: Family) -> Result<
         check_param(kernel, p, fam)?;
     }
     for (i, l) in kernel.locals.iter().enumerate() {
-        let fits = Family::of(l.elem).is_some_and(|f| f == fam || f.is_narrow());
+        let fits = storage_ok(fam, l.elem);
         if l.lanes != 1 || !fits {
             return Err(refuse(
                 kernel,

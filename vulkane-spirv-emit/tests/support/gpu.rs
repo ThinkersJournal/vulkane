@@ -101,6 +101,15 @@ impl Gpu {
         })
     }
 
+    /// The device's float-controls properties (`None` when it cannot say), for a skip line.
+    #[allow(
+        dead_code,
+        reason = "shared test module: each test binary compiles it whole but uses part of it"
+    )]
+    pub(crate) fn float_controls(&self) -> Option<vulkane::safe::FloatControlsProperties> {
+        self.physical.float_controls_properties()
+    }
+
     /// The device's `shaderInt64` readout (`VkPhysicalDeviceFeatures`), for a skip line.
     #[allow(dead_code)]
     pub(crate) fn shader_int64(&self) -> bool {

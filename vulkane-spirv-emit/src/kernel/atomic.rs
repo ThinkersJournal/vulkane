@@ -67,6 +67,12 @@ impl Kc<'_> {
 
     /// One atomic read-modify-write or compare-exchange statement.
     pub(super) fn atomic(&self, s: &Stmt) -> Result<(), LowerError> {
+        if self.em.borrow().fam.is_float() {
+            return Err(refuse(
+                self.kernel,
+                "a float atomic needs the AtomicFloat capabilities (device af32/af64), not lowered: it has no device to verify on",
+            ));
+        }
         if self.em.borrow().fam.is_wide() && !self.wide_atomics.replace(true) {
             // Declared once, and only for a kernel that has a 64-bit atomic.
             self.em.borrow_mut().b.capability(Capability::Int64Atomics);

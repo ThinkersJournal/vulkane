@@ -5,7 +5,7 @@
 
 use unpopped::backend::{Backend, DtypeSupport, LowerError};
 use unpopped::kernel::{Block, BufferRole, Param};
-use unpopped_vocab::ElementKind::{F32, F64, I64, U64};
+use unpopped_vocab::ElementKind::{Bf16, I64, U64};
 use unpopped_vocab::{ArchSku, TargetId};
 
 use crate::SpirV;
@@ -60,22 +60,21 @@ fn the_plan_path_still_declines_64_bit_integers() {
 }
 
 #[test]
-fn float_kernels_stay_a_typed_decline() {
-    for ty in [F32, F64] {
-        let mut k = unpopped::kernel::KernelFn::new(
-            "float",
-            ty,
-            vec![Param::buffer("out", ty, BufferRole::Write, Some(1))],
-            vec![],
-            Block(vec![]),
-        );
-        k.launch = Some(unpopped::exec::LaunchShape::new([1, 1, 1], [1, 1, 1]));
-        match SpirV.lower_kernel(&k) {
-            Err(LowerError::UnsupportedKernel { detail }) => {
-                assert!(detail.contains("integer kernels only"), "{detail}");
-            }
-            other => panic!("expected a decline at {ty:?}, got {other:?}"),
+fn kernels_at_an_unlowered_dtype_stay_a_typed_decline() {
+    let ty = Bf16;
+    let mut k = unpopped::kernel::KernelFn::new(
+        "float",
+        ty,
+        vec![Param::buffer("out", ty, BufferRole::Write, Some(1))],
+        vec![],
+        Block(vec![]),
+    );
+    k.launch = Some(unpopped::exec::LaunchShape::new([1, 1, 1], [1, 1, 1]));
+    match SpirV.lower_kernel(&k) {
+        Err(LowerError::UnsupportedKernel { detail }) => {
+            assert!(detail.contains("kernels only"), "{detail}");
         }
+        other => panic!("expected a decline at {ty:?}, got {other:?}"),
     }
 }
 

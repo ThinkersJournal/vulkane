@@ -9,6 +9,9 @@ use unpopped::backend::{Decline, DeclinedOp, LowerError, Spelling};
 use unpopped::ir::{ArithOp, BinaryOp, UnaryOp};
 use unpopped_vocab::ElementKind;
 
+use crate::accuracy::{arith_refusal, binary_refusal, unary_refusal};
+use crate::family::Family;
+
 /// GLSL.std.450 instruction numbers this backend uses, from `extinst.glsl.std.450.grammar.json`
 /// (SPIR-V Headers, Vulkan SDK 1.4.350). `rspirv` 0.13 ships no enum for them.
 #[derive(Copy, Clone, Debug)]
@@ -95,69 +98,6 @@ fn lookup<K: PartialEq>(table: &[(K, GLOp)], key: &K) -> Option<GLOp> {
     table.iter().find(|(k, _)| k == key).map(|&(_, g)| g)
 }
 
-/// Which scalar family a dtype lowers to.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Family {
-    F32,
-    F64,
-    I32,
-    U32,
-    /// 64-bit integers: kernels only (`Backend::lower_kernel`); a plan never lowers them.
-    I64,
-    U64,
-    /// 8- and 16-bit integers: storage and local types of a kernel (a `Cast` widens them to, and
-    /// narrows them from, the 32-bit compute dtype); never a compute dtype and never a plan dtype.
-    I8,
-    U8,
-    I16,
-    U16,
-}
-
-impl Family {
-    pub(crate) fn of(dt: ElementKind) -> Option<Family> {
-        match dt {
-            ElementKind::F32 | ElementKind::F32Strict => Some(Family::F32),
-            ElementKind::F64 => Some(Family::F64),
-            ElementKind::I32 => Some(Family::I32),
-            ElementKind::U32 => Some(Family::U32),
-            ElementKind::I64 => Some(Family::I64),
-            ElementKind::U64 => Some(Family::U64),
-            ElementKind::I8 => Some(Family::I8),
-            ElementKind::U8 => Some(Family::U8),
-            ElementKind::I16 => Some(Family::I16),
-            ElementKind::U16 => Some(Family::U16),
-            _ => None,
-        }
-    }
-    pub(crate) fn is_float(self) -> bool {
-        matches!(self, Family::F32 | Family::F64)
-    }
-    pub(crate) fn bytes(self) -> u32 {
-        self.bits() / 8
-    }
-    /// The width of the compute dtype in bits.
-    pub(crate) fn bits(self) -> u32 {
-        match self {
-            Family::F64 | Family::I64 | Family::U64 => 64,
-            Family::I8 | Family::U8 => 8,
-            Family::I16 | Family::U16 => 16,
-            _ => 32,
-        }
-    }
-    /// An 8- or 16-bit integer, which needs `Int8`/`Int16` (and a storage capability in a buffer).
-    pub(crate) fn is_narrow(self) -> bool {
-        matches!(self, Family::I8 | Family::U8 | Family::I16 | Family::U16)
-    }
-    /// A 64-bit integer, which needs the `Int64` capability.
-    pub(crate) fn is_wide(self) -> bool {
-        matches!(self, Family::I64 | Family::U64)
-    }
-    /// A signed integer family.
-    pub(crate) fn is_signed(self) -> bool {
-        matches!(self, Family::I32 | Family::I64 | Family::I8 | Family::I16)
-    }
-}
-
 pub(crate) fn lo<T, E: std::fmt::Display>(r: Result<T, E>) -> Result<T, LowerError> {
     r.map_err(|e| LowerError::UnsupportedOp {
         detail: format!("spirv builder: {e}"),
@@ -198,6 +138,11 @@ pub(crate) struct Em {
     /// `lower_dag` names a hoisted shared node `tmpN` and hands that name to its consumers; the
     /// `temp` seam records which result id each name stands for.
     pub(crate) temps: HashMap<String, Word>,
+    /// A kernel (`lower_kernel`) rather than a plan: float ops are lowered only where the Vulkan
+    /// accuracy bound is no looser than the contract tier (`accuracy.rs`).
+    pub(crate) strict: bool,
+    /// Whether a conversion needs `RoundingModeRTE` at 16 / 32 / 64 bits (see `cast.rs`).
+    pub(crate) rte: [bool; 3],
 }
 
 impl Em {
@@ -214,13 +159,24 @@ impl Em {
     fn fconst(&mut self, v: f64) -> Word {
         match self.fam {
             Family::F64 => self.b.constant_bit64(self.t, v.to_bits()),
+            Family::F16 => {
+                let bits = crate::half::exact_bits(v).expect(
+                    "a half constant the emitter makes is exact (`constant` checks literals)",
+                );
+                self.b.constant_bit32(self.t, u32::from(bits))
+            }
             _ => self.b.constant_bit32(self.t, (v as f32).to_bits()),
         }
     }
 
     fn gl(&mut self, op: GLOp, args: &[Word]) -> Result<Word, LowerError> {
+        self.gl_on(self.t, op, args)
+    }
+
+    /// A GLSL.std.450 call whose result (and operands) are of type `ty`, not the compute dtype.
+    pub(crate) fn gl_on(&mut self, ty: Word, op: GLOp, args: &[Word]) -> Result<Word, LowerError> {
         let ops: Vec<Operand> = args.iter().map(|&a| Operand::IdRef(a)).collect();
-        lo(self.b.ext_inst(self.t, None, self.glsl, op as u32, ops))
+        lo(self.b.ext_inst(ty, None, self.glsl, op as u32, ops))
     }
 
     /// `cond ? 1.0 : 0.0` in the compute dtype.
@@ -348,6 +304,9 @@ impl Em {
                 "v1 unary is float/double; integer dtypes have no unary math",
             ));
         }
+        if let Some(why) = self.strict.then(|| unary_refusal(op, self.fam)).flatten() {
+            return Ok(decline_unary(op, self.dtype, &why));
+        }
         if POLYFILL_UNARY.contains(&op) {
             return Ok(Spelling::Declined(Decline::UnsupportedOp {
                 op: DeclinedOp::Unary(op),
@@ -435,6 +394,9 @@ impl Em {
     }
 
     fn binary_fp(&mut self, op: BinaryOp, a: Word, b: Word) -> Result<Spelling, LowerError> {
+        if let Some(why) = self.strict.then(|| binary_refusal(op)).flatten() {
+            return Ok(decline_binary(op, self.dtype, &why));
+        }
         if let Some(r) = self.binary_fp_value(op, a, b)? {
             return Ok(sp(r));
         }
@@ -517,6 +479,9 @@ impl Em {
     }
 
     fn arith_float(&mut self, op: ArithOp, a: Word, b: Word) -> Result<Option<Word>, LowerError> {
+        if self.strict && arith_refusal(op).is_some() {
+            return Ok(None);
+        }
         let t = self.t;
         let r = match op {
             ArithOp::Add => self.b.f_add(t, None, a, b),
@@ -659,7 +624,11 @@ impl Em {
             None => Spelling::Declined(Decline::UnsupportedDtypeForOp {
                 op: DeclinedOp::Arith(op),
                 dtype: self.dtype,
-                why: "no SPIR-V spelling for this arithmetic op".to_string(),
+                why: self
+                    .strict
+                    .then(|| arith_refusal(op))
+                    .flatten()
+                    .unwrap_or_else(|| "no SPIR-V spelling for this arithmetic op".to_string()),
             }),
         })
     }
@@ -699,6 +668,15 @@ impl Em {
                 op: DeclinedOp::Integer,
                 dtype: self.dtype,
                 why: "a float `Const` in an integer kernel; use `ConstInt`".to_string(),
+            });
+        }
+        if self.fam == Family::F16 && crate::half::exact_bits(v).is_none() {
+            return Spelling::Declined(Decline::UnsupportedDtypeForOp {
+                op: DeclinedOp::Kernel,
+                dtype: self.dtype,
+                why: format!(
+                    "the literal {v} is not exactly an F16 value, and a kernel does not round a literal"
+                ),
             });
         }
         sp(self.fconst(v))
