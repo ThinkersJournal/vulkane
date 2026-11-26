@@ -852,8 +852,8 @@ impl PhysicalDevice {
         Some(ShaderArithmeticFeatures {
             shader_float16: f16i8.shaderFloat16 != 0,
             shader_int8: f16i8.shaderInt8 != 0,
-            storage_buffer_16bit: s16.is_some_and(|s| s.storageBuffer16BitAccess != 0),
-            storage_buffer_8bit: s8.is_some_and(|s| s.storageBuffer8BitAccess != 0),
+            storage_buffer_16bit: s16.is_some_and(|f| f.storageBuffer16BitAccess != 0),
+            storage_buffer_8bit: s8.is_some_and(|f| f.storageBuffer8BitAccess != 0),
         })
     }
 
