@@ -1,0 +1,3 @@
+kind: `vulkane::safe::command` is split: dynamic-rendering and graphics-state recording move into their own files (ROADMAP 9b slice 3, CodeRipper MOD-005); no API change
+---
+Slice 3 of 3 of the 9b size-outlier split (slices 1 and 2, #209 and #210, split `allocator/mod.rs`). `command.rs` was the next size outlier: dynamic-rendering recording moves to `command/render.rs` and graphics-state recording to `command/graphics.rs`. A move, not a rewrite: the cherry-pick of the old `day-2026-11-26-9b` branch's commit 3150e14, re-cut onto current main. The MOD-008 pass-through inlines of that branch (four private functions in `vulkan_gen` and `vulkane`) are NOT here: they change generator code and get their own PR with their own proof. Evidence is in the PR body.
