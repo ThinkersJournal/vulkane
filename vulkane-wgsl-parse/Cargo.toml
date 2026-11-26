@@ -11,7 +11,7 @@ categories   = ["parser-implementations", "graphics"]
 repository   = "https://github.com/ThinkersJournal/vulkane"
 homepage     = "https://github.com/ThinkersJournal/vulkane"
 readme       = "README.md"
-include      = ["src/**", "README.md", "LICENSE-*"]
+include      = ["src/**", "README.md", "LICENSE-*", "THIRD-PARTY-NOTICES.md"]
 
 [dependencies]
 wgsl-parse = "0.6.0"
