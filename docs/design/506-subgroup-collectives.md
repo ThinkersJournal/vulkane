@@ -43,7 +43,16 @@ GLSL and SPIR-V: every `Collective` stays refused, as today.
 Scans (`simd_prefix_inclusive_sum`, `simd_prefix_exclusive_sum`) stay declined. Constraints already recorded in the emitter: the functions act on
 the active threads ("A thread needs to only read data from another active thread"; `simd_ballot` "sets the bits that correspond to
 inactive threads to 0"), and `T` excludes `bool`, `bfloat`, `long`, `ulong` (those dtypes stay declined by name).
-**UNVERIFIED in this document:** the spec text for the out-of-range behaviour of `simd_shuffle_up/down/xor`; to be read and quoted before code.
+**READ VERBATIM (2026-11-26) from the Metal Shading Language Specification version 4.1 (dated 2026-06-04), section 6.10.2 "SIMD-Group Functions", Tables 6.14 and 6.15** (the PDF downloaded to a scratch directory and text-extracted with pymupdf; pages 217-221):
+
+* Active threads: "An active thread is a thread that is executing. An inactive thread is a thread that is not executing. ... A thread needs to only read data from another active thread in the SIMD-group." `T` is "a scalar or vector of any integer or floating-point type, except: bool, bfloat, long, ulong, void, size_t, ptrdiff_t"; the bitwise functions need an integer `Ti`.
+* `simd_shuffle_down(data, delta)`: "This function doesn't modify the upper delta lanes of data because it doesn't wrap values around the SIMD-group." `simd_shuffle_up`: "doesn't modify the lower delta lanes of data because it doesn't wrap". **Both match the IR rule (an out-of-range source reads the lane's OWN value) and need no select.** `delta` "needs to be the same for all threads in the SIMD-group".
+* `simd_shuffle_xor(value, mask)`: "the thread whose SIMD lane ID is equal to the bitwise XOR (^) of the caller's SIMD lane ID and mask. The value of mask needs to be the same for all threads". **The text states NO result when `lane ^ mask` is outside the SIMD-group**, so the IR's own-value rule for `Xor` must be spelled by an explicit in-range select (and is device-tested at the edge lanes), or declined by name.
+* `simd_shuffle(data, simd_lane_id)`: "needs to be a valid SIMD lane ID but doesn't have to be the same for all threads": the IR's `Idx` (`operand mod n`) needs an explicit `% threads_per_simdgroup` before the call.
+* `simd_broadcast(data, broadcast_lane_id)`: "The specification doesn't define the behavior when broadcast_lane_id isn't a valid SIMD lane ID or isn't the same for all threads in a SIMD-group." So a `Broadcast` lane must be provably valid and uniform (a `ConstInt` below the subgroup size), else decline by name.
+* Votes: `simd_all`, `simd_any` over "all active threads"; `simd_ballot` returns a `simd_vote` wrapper around a bitmask "for all active threads in the SIMD-group for which expr is true. The function sets the bits that correspond to inactive threads to 0." (The IR `Ballot` is a 32-bit mask, so the `simd_vote` must be converted to a `uint`: UNVERIFIED how, until the `simd_vote` section is read.)
+* Reductions (Table 6.15): `simd_sum`, `simd_product`, `simd_max`, `simd_min` (`T`), `simd_and`, `simd_or`, `simd_xor` (`Ti`): "across all active threads in the SIMD-group and broadcasts the result to all active threads". The prefix functions (`simd_prefix_exclusive_sum`, ...) are scans: declined (the ruling).
+* **Still UNVERIFIED:** the `simd_vote` type and its conversion to an integer mask, and the minimum Metal/OS availability per function as it matters for the probe device (the tables list macOS 2.1+ / iOS 2.3+ for the reductions).
 
 ### WGSL : read from the WGSL spec source, `gpuweb/gpuweb` `wgsl/index.bs` on `main`, 2026-11-26 (rendered section numbers in brackets)
 
@@ -128,7 +137,7 @@ From unpopped's U63 notice: `check_kernel` refuses a `Subgroup` `Collective`/`Co
 
 ## Open questions (none blocks the plan; each blocks the code it names)
 
-* MSL `simd_shuffle_up/down/xor` edge text (read the 4.1 spec before the MSL spelling).
+* MSL: shuffle up/down/xor edge text READ (see above); open: the `simd_vote` to integer conversion for `Ballot`.
 * WGSL 15.6.3 text and the default severity of `subgroup_uniformity` (quote before relying).
 * Which dtypes each function accepts per dialect beyond the table above (bool, `Bf16`, 64-bit): decline by name until each is shown.
 * KISS 0.24.0 added seven dtype tokens (pm-kernels): an unknown token is a decline by name; check where this crate maps dtype tokens when the take lands.
