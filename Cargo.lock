@@ -438,8 +438,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2fd8aa5aa2d793aeb57ac882604bcf7b66336318186053ed9ceec07c219ab5c5"
 dependencies = [
  "kiss-vulkan-vocab 0.6.0",
- "unpopped",
- "unpopped-vocab",
+ "unpopped 0.58.5",
+ "unpopped-vocab 0.58.5",
 ]
 
 [[package]]
@@ -450,8 +450,8 @@ checksum = "d70565299ec95f800c4d7b6f440777259896fdf2134d0c9fb11e9e6e6da5aeb6"
 dependencies = [
  "tree-sitter",
  "tree-sitter-slang",
- "unpopped",
- "unpopped-convert",
+ "unpopped 0.58.5",
+ "unpopped-convert 0.58.5",
 ]
 
 [[package]]
@@ -1979,7 +1979,19 @@ dependencies = [
  "libm",
  "serde",
  "serde_json",
- "unpopped-vocab",
+ "unpopped-vocab 0.58.5",
+]
+
+[[package]]
+name = "unpopped"
+version = "0.59.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "322b38f281413f5918f8589a0bda63df2f4cfd8e3fdde1541f400a3f04abf95d"
+dependencies = [
+ "libm",
+ "serde",
+ "serde_json",
+ "unpopped-vocab 0.59.1",
 ]
 
 [[package]]
@@ -1989,18 +2001,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0711e056d94ce2a3ea20d258edcd1f7057e6f05a323e1a9ef9beeaa1542332fc"
 dependencies = [
  "tree-sitter",
- "unpopped",
- "unpopped-vocab",
+ "unpopped 0.58.5",
+ "unpopped-vocab 0.58.5",
+]
+
+[[package]]
+name = "unpopped-convert"
+version = "0.59.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e10bb9d92ed37f1a7f8e7ba867edb82bc7170caf7f5c0af4f7fa884baa0aec5c"
+dependencies = [
+ "tree-sitter",
+ "unpopped 0.59.1",
+ "unpopped-vocab 0.59.1",
 ]
 
 [[package]]
 name = "unpopped-cpu-c"
-version = "0.58.5"
+version = "0.59.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6902260d6e1ad3c27078a2dec3f1e40fdcc231f0a71f88a85f90b1674bb3e80"
+checksum = "9361f634cbb7ed2e2fdcb63ac249d2c4de498f54f0f263a3d2612b010f741f98"
 dependencies = [
- "unpopped",
- "unpopped-vocab",
+ "unpopped 0.59.1",
+ "unpopped-vocab 0.59.1",
 ]
 
 [[package]]
@@ -2008,6 +2031,16 @@ name = "unpopped-vocab"
 version = "0.58.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10ccfcfac209cbf9ba9dd1416c074087bfe628c3405e7254a14faa02310b29d2"
+dependencies = [
+ "float8",
+ "half",
+]
+
+[[package]]
+name = "unpopped-vocab"
+version = "0.59.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4cc6fbee491356534d29253650735d874ea5ee9d4c4082a0477566cd00a536f"
 dependencies = [
  "float8",
  "half",
@@ -2094,8 +2127,8 @@ name = "vulkane-glsl-emit"
 version = "0.28.0"
 dependencies = [
  "tempfile",
- "unpopped",
- "unpopped-vocab",
+ "unpopped 0.59.1",
+ "unpopped-vocab 0.59.1",
  "vulkane",
  "vulkane-kernel-text",
  "vulkane-spirv-emit",
@@ -2107,10 +2140,10 @@ version = "0.28.0"
 dependencies = [
  "fishstringer-slang-emit",
  "tempfile",
- "unpopped",
- "unpopped-convert",
+ "unpopped 0.59.1",
+ "unpopped-convert 0.59.1",
  "unpopped-cpu-c",
- "unpopped-vocab",
+ "unpopped-vocab 0.59.1",
  "vulkane",
  "vulkane-hlsl-parse",
  "vulkane-spirv-emit",
@@ -2122,17 +2155,17 @@ version = "0.28.0"
 dependencies = [
  "tree-sitter",
  "tree-sitter-hlsl",
- "unpopped",
- "unpopped-convert",
- "unpopped-vocab",
+ "unpopped 0.59.1",
+ "unpopped-convert 0.59.1",
+ "unpopped-vocab 0.59.1",
 ]
 
 [[package]]
 name = "vulkane-kernel-text"
 version = "0.28.0"
 dependencies = [
- "unpopped",
- "unpopped-vocab",
+ "unpopped 0.59.1",
+ "unpopped-vocab 0.59.1",
 ]
 
 [[package]]
@@ -2160,9 +2193,9 @@ dependencies = [
  "fishstringer-slang-emit",
  "rspirv",
  "tempfile",
- "unpopped",
+ "unpopped 0.59.1",
  "unpopped-cpu-c",
- "unpopped-vocab",
+ "unpopped-vocab 0.59.1",
  "vulkane",
  "vulkane-spirv-parse",
 ]
@@ -2181,9 +2214,9 @@ version = "0.28.0"
 dependencies = [
  "naga",
  "tempfile",
- "unpopped",
+ "unpopped 0.59.1",
  "unpopped-cpu-c",
- "unpopped-vocab",
+ "unpopped-vocab 0.59.1",
  "vulkane",
  "vulkane-kernel-text",
  "vulkane-spirv-emit",
