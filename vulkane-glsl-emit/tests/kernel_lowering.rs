@@ -496,3 +496,56 @@ fn a_cluster_scope_fence_is_declined_by_the_dialect() {
     assert!(check_kernel(&k).is_ok(), "{:?}", check_kernel(&k));
     declined(&k, "Fence");
 }
+
+/// Two walker declines no earlier test noticed losing (audit mutants that accepted a non-wrapping cast and an integer unary
+/// op passed every suite). Each kernel passes the kernel checker, so the refusal is the walker's.
+#[test]
+fn a_non_wrapping_cast_and_an_integer_unary_op_are_declined_by_the_walker() {
+    use unpopped::exec::LaunchShape;
+    use unpopped::ir::{CastSpec, RoundMode, Saturation, ScalarExpr as E, UnaryOp};
+    use unpopped::kernel::{Block, BufferRole, KernelFn, Param, Place, Stmt, check_kernel};
+    use unpopped_vocab::ElementKind::U32;
+    let one_store = |value: E| {
+        let mut k = KernelFn::new(
+            "walker_decline",
+            U32,
+            vec![Param::buffer("out", U32, BufferRole::ReadWrite, Some(1))],
+            vec![],
+            Block(vec![Stmt::Store {
+                place: Place::Logical {
+                    buffer: 0,
+                    coords: vec![E::ConstInt(0, U32)],
+                },
+                value,
+            }]),
+        );
+        k.launch = Some(LaunchShape::new([1, 1, 1], [1, 1, 1]));
+        assert!(check_kernel(&k).is_ok(), "{:?}", check_kernel(&k));
+        k
+    };
+    let either = |k: &KernelFn, needle: &str| match Glsl.lower_kernel(k) {
+        Err(LowerError::UnsupportedKernel { detail } | LowerError::UnsupportedOp { detail }) => {
+            assert!(detail.contains(needle), "wanted `{needle}` in `{detail}`");
+            assert!(!detail.contains("check_kernel refused"), "{detail}");
+        }
+        other => panic!("wanted a decline naming `{needle}`, got {other:?}"),
+    };
+    // A clamping cast is refused by unpopped's own `cast` seam rule before the walker's wrapping-only guard (which a
+    // mutant removing it showed is masked: an equivalent mutant), and the refusal is still not the checker's.
+    either(
+        &one_store(E::Cast(
+            Box::new(E::ConstInt(1, U32)),
+            CastSpec {
+                to: U32,
+                round: RoundMode::NearestEven,
+                sat: Saturation::Clamp,
+            },
+        )),
+        "a Cast U32 -> U32 reached an emitter with no `cast` seam",
+    );
+    // An integer kernel spells no unary op.
+    either(
+        &one_store(E::Unary(UnaryOp::Abs, Box::new(E::ConstInt(1, U32)))),
+        "unary op Abs is not lowered",
+    );
+}
