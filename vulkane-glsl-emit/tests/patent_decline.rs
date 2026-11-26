@@ -144,6 +144,8 @@ fn declined_ext() -> Vec<Case> {
         ),
         ("Tcgen05Commit", ext, Stmt::Tcgen05Commit { bar: bar() }),
         ("WgmmaWait", ext, Stmt::WgmmaWait { pending: 0 }),
+        // INTERIM until `unpopped::fixtures` (ROADMAP 9h): this fixture is not checker-valid and has no vacuity mutant, so
+        // it proves the by-name refusal only, not that the emitter arm is reached on a valid kernel.
         (
             "CopyUnpack",
             ext,
