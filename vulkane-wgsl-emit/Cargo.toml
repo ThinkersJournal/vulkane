@@ -14,8 +14,8 @@ readme       = "README.md"
 include      = ["src/**", "README.md", "LICENSE-*", "THIRD-PARTY-NOTICES.md"]
 
 [dependencies]
-unpopped       = "~0.57.0"
-unpopped-vocab = "~0.57.0"
+unpopped       = "~0.58.0"
+unpopped-vocab = "~0.58.0"
 vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.26" }
 
 [dev-dependencies]
@@ -24,7 +24,7 @@ vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.26" }
 naga = { version = "30.0", features = ["wgsl-in", "spv-out"] }
 # The GPU oracle: same harness and cases as the SPIR-V emitter's G4.2 test, WGSL compiled by naga.
 vulkane        = { path = "../vulkane" }
-unpopped-cpu-c = "~0.57.0"
+unpopped-cpu-c = "~0.58.0"
 vulkane-spirv-emit = { path = "../vulkane-spirv-emit" }
 tempfile       = { workspace = true }
 

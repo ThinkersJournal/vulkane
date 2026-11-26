@@ -96,7 +96,7 @@ fn declined_434c() -> Vec<Case> {
     ]
 }
 
-/// The seven of the 2026-11-16 extension.
+/// The seven of the 2026-11-16 extension, and `CopyUnpack` (unpopped 0.58).
 fn declined_ext() -> Vec<Case> {
     let ext = MARKER_EXT;
     vec![
@@ -144,6 +144,16 @@ fn declined_ext() -> Vec<Case> {
         ),
         ("Tcgen05Commit", ext, Stmt::Tcgen05Commit { bar: bar() }),
         ("WgmmaWait", ext, Stmt::WgmmaWait { pending: 0 }),
+        (
+            "CopyUnpack",
+            ext,
+            Stmt::CopyUnpack {
+                dst: bar(),
+                src: bar(),
+                groups: 1,
+                bar: bar(),
+            },
+        ),
     ]
 }
 

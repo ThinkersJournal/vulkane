@@ -62,7 +62,8 @@ fn declined_434c(stmt: &Stmt) -> Option<Declined> {
     Some((name, DECLINED_434C))
 }
 
-/// The seven of the 2026-11-16 extension.
+/// The seven of the 2026-11-16 extension, and `CopyUnpack` (unpopped 0.58: its own doc says the `CopyBulk` patent note applies and
+/// emitters for other manufacturers decline it).
 fn declined_extension(stmt: &Stmt) -> Option<Declined> {
     let name = match stmt {
         Stmt::MbarInit { .. } => "MbarInit",
@@ -72,6 +73,7 @@ fn declined_extension(stmt: &Stmt) -> Option<Declined> {
         Stmt::CopyBulk { .. } => "CopyBulk",
         Stmt::Tcgen05Commit { .. } => "Tcgen05Commit",
         Stmt::WgmmaWait { .. } => "WgmmaWait",
+        Stmt::CopyUnpack { .. } => "CopyUnpack",
         _ => return None,
     };
     Some((name, DECLINED_434C_EXT))
@@ -97,6 +99,7 @@ fn nested(stmt: &Stmt) -> Option<Declined> {
         | Stmt::CopyBulk { .. }
         | Stmt::Tcgen05Commit { .. }
         | Stmt::WgmmaWait { .. }
+        | Stmt::CopyUnpack { .. }
         // Every other statement is not declined by name here.
         | Stmt::Let { .. }
         | Stmt::Load { .. }
@@ -122,6 +125,9 @@ fn nested(stmt: &Stmt) -> Option<Declined> {
         | Stmt::WgmmaCommit
         | Stmt::Tcgen05Mma { .. }
         | Stmt::Tcgen05Ld { .. }
+        | Stmt::Tcgen05Alloc { .. }
+        | Stmt::Tcgen05Dealloc { .. }
+        | Stmt::Tcgen05RelinquishPermit
         | Stmt::Call { .. }
         | Stmt::CallTuple { .. }
         | Stmt::ExternCall { .. } => None,

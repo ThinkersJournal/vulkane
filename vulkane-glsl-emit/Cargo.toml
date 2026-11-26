@@ -14,8 +14,8 @@ readme       = "README.md"
 include      = ["src/**", "README.md", "LICENSE-*"]
 
 [dependencies]
-unpopped       = "~0.57.0"
-unpopped-vocab = "~0.57.0"
+unpopped       = "~0.58.0"
+unpopped-vocab = "~0.58.0"
 vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.26" }
 
 [dev-dependencies]
