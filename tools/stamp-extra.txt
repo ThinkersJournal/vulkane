@@ -1,0 +1,4 @@
+# Files that carry the project version in prose or data (tools/stamp-version.py, `path ~ REGEX`: ONE group kept before the version).
+# The KISS-CLASSIFY 6.8-0008 manifest names the crate version that emitted it; kiss-vulkan-vocab joined the project line (WSP-010, #173/#174),
+# so every stamp moves it, and its test (vocabulary_manifest.rs) fails byte-for-byte when it does not.
+kiss-vulkan-vocab/manifest/vulkan-vocabulary.json ~ ("generated_from": "kiss-vulkan-vocab ){old}

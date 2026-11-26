@@ -1,6 +1,6 @@
 [package]
 name         = "vulkane-spirv-emit"
-version      = "0.27.1"
+version      = "0.27.2"
 edition      = "2024"
 rust-version = "1.85"
 authors      = ["Eric Evans <CireSnave@gmail.com>"]
@@ -19,6 +19,8 @@ unpopped       = "~0.58.0"
 unpopped-vocab = "~0.58.0"
 
 [dev-dependencies]
+# The published decline fixtures (ROADMAP 9h): one checker-valid kernel or module per `Stmt` variant.
+unpopped = { version = "~0.58.5", features = ["fixtures"] }
 # Reflection of the emitted module: entry point, workgroup size, bindings.
 vulkane-spirv-parse = { path = "../vulkane-spirv-parse" }
 # The live-device shift test opens a device through the safe wrapper (and its shared `tests/common`).
