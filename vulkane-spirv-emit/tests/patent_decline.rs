@@ -211,8 +211,8 @@ fn nest_while(s: Stmt) -> Stmt {
 fn each_declined_statement_is_refused_by_name_at_every_depth() {
     assert_eq!(
         declined().len(),
-        12,
-        "the declined list is twelve statements"
+        13,
+        "the declined list is thirteen statements (twelve, and `CopyUnpack` since unpopped 0.58)"
     );
     for (name, marker, _) in declined() {
         let shapes: Vec<Shape> = vec![
