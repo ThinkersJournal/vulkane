@@ -140,10 +140,31 @@ fn a_non_cubic_3d_launch_writes_every_cell_its_own_ids_on_a_device() {
     }
 }
 
+/// A refusal that is the kernel CHECKER's by design (the emitter surfaces `check_kernel`'s answer): pinned as such, so
+/// `declined` can stay strict about emitter-owned refusals.
+fn declined_by_checker(k: &KernelFn, needle: &str) {
+    match Glsl.lower_kernel(k) {
+        Err(LowerError::UnsupportedKernel { detail }) => {
+            assert!(
+                detail.contains("check_kernel refused") && detail.contains(needle),
+                "wanted the checker's `{needle}` in `{detail}`"
+            );
+        }
+        other => panic!("wanted a checker refusal naming `{needle}`, got {other:?}"),
+    }
+}
+
 fn declined(k: &KernelFn, needle: &str) {
     match Glsl.lower_kernel(k) {
         Err(LowerError::UnsupportedKernel { detail }) => {
             assert!(detail.contains(needle), "wanted `{needle}` in `{detail}`");
+            // STRICT (audit): the refusal is the emitter's own, not the kernel checker's, whose text can already name a construct.
+            assert!(
+                needle.contains("check_kernel")
+                    || needle.contains("Divergent")
+                    || !detail.contains("check_kernel refused"),
+                "STRICT: the checker refused it, not the emitter: {detail}"
+            );
         }
         other => panic!("wanted an UnsupportedKernel naming `{needle}`, got {other:?}"),
     }
@@ -300,7 +321,7 @@ fn what_the_walker_does_not_lower_is_a_typed_decline_naming_it() {
     let mut dynamic =
         reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Spec);
     dynamic.allocs[0].extent = Extent::Param(1);
-    declined(&dynamic, "AllocExtent");
+    declined_by_checker(&dynamic, "AllocExtent");
 
     let mut device =
         reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
@@ -413,4 +434,65 @@ fn a_subgroup_range_no_device_can_have_is_a_typed_decline() {
         Glsl.lower_kernel(&subgroup_kernel::subgroup_kernel(4, 7))
             .is_ok()
     );
+}
+
+/// A walker decline with no earlier test (an audit mutant that removed it passed every suite): a parameter-dependent grid.
+/// The kernel passes the kernel checker, so the refusal is the walker's. (The walker's other `place_ok` decline, a place with
+/// more than one coordinate, is unreachable by a checker-valid kernel on this unpopped: the checker refuses it with `BadPlace`
+/// and a rank-2 buffer is refused earlier by the walker, so no test can reach it; the reachable form, `Place::Raw`, is pinned
+/// where unpopped 0.57 is taken.)
+#[test]
+fn a_parameter_dependent_grid_is_declined_by_the_walker() {
+    use unpopped::exec::{GridDim, LaunchShape};
+    use unpopped::ir::ScalarExpr as E;
+    use unpopped::kernel::{
+        Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt, check_kernel,
+    };
+    use unpopped_vocab::ElementKind::U32;
+    let c = |v| E::ConstInt(v, U32);
+    // A grid whose x extent is the scalar parameter `n`.
+    let mut grid = KernelFn::new(
+        "grid_param",
+        U32,
+        vec![
+            Param::buffer("out", U32, BufferRole::ReadWrite, Some(1)),
+            Param::scalar("n", U32, 0),
+        ],
+        vec![LocalDecl::scalar(U32)],
+        Block(vec![Stmt::Store {
+            place: Place::Logical {
+                buffer: 0,
+                coords: vec![c(0)],
+            },
+            value: c(1),
+        }]),
+    );
+    let mut launch = LaunchShape::new([1, 1, 1], [1, 1, 1]);
+    launch.grid_dims = Some([GridDim::Param(0), GridDim::Static(1), GridDim::Static(1)]);
+    grid.launch = Some(launch);
+    assert!(check_kernel(&grid).is_ok(), "{:?}", check_kernel(&grid));
+    declined(&grid, "parameter-dependent grid");
+}
+
+/// A fence at a scope GLSL has no barrier for (cluster) is declined by name, never approximated by a block fence; found by
+/// an audit mutant that spelled every scope and passed every suite. The kernel passes the kernel checker.
+#[test]
+fn a_cluster_scope_fence_is_declined_by_the_dialect() {
+    use unpopped::exec::Scope;
+    use unpopped::kernel::{MemoryOrder, Stmt, check_kernel};
+    let mut k = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    k.launch = k.launch.map(|mut l| {
+        l.grid = [2, 1, 1];
+        l.cluster = Some([2, 1, 1]);
+        l
+    });
+    k.body.0.insert(
+        3,
+        Stmt::Fence {
+            scope: Scope::Cluster,
+            order: MemoryOrder::SeqCst,
+        },
+    );
+    assert!(check_kernel(&k).is_ok(), "{:?}", check_kernel(&k));
+    declined(&k, "Fence");
 }

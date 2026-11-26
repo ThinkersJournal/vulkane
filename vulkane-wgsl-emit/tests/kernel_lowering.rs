@@ -246,6 +246,13 @@ fn declined(k: &KernelFn, needle: &str) {
     match Wgsl.lower_kernel(k) {
         Err(LowerError::UnsupportedKernel { detail }) => {
             assert!(detail.contains(needle), "wanted `{needle}` in `{detail}`");
+            // STRICT (audit): the refusal is the emitter's own, not the kernel checker's, whose text can already name a construct.
+            assert!(
+                needle.contains("check_kernel")
+                    || needle.contains("Divergent")
+                    || !detail.contains("check_kernel refused"),
+                "STRICT: the checker refused it, not the emitter: {detail}"
+            );
         }
         other => panic!("wanted an UnsupportedKernel naming `{needle}`, got {other:?}"),
     }

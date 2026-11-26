@@ -264,7 +264,12 @@ fn a_private_array_with_data_dependent_indexing_is_per_thread_on_a_device() {
 fn a_constant_allocation_is_a_typed_decline() {
     match Hlsl.lower_kernel(&private_kernel::read_only_constant(WORKGROUP_SIZE)) {
         Err(LowerError::UnsupportedKernel { detail }) => {
-            eprintln!("hlsl constant decline: {detail}");
+            // Audit: this used to accept ANY `UnsupportedKernel`, including a kernel-checker refusal. The refusal is the Slang
+            // emitter's (`fishstringer-slang-emit`, which `Hlsl::lower_kernel` delegates to): its mutant belongs to that crate's suite.
+            assert!(
+                detail.contains("Constant") && !detail.contains("check_kernel refused"),
+                "wanted the Slang emitter's Constant-allocation decline, got: {detail}"
+            );
         }
         other => panic!("wanted an UnsupportedKernel, got {other:?}"),
     }
