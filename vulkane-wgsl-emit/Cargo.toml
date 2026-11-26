@@ -1,6 +1,6 @@
 [package]
 name         = "vulkane-wgsl-emit"
-version      = "0.28.1"
+version      = "0.29.0"
 edition      = "2024"
 rust-version = "1.85"
 authors      = ["Eric Evans <CireSnave@gmail.com>"]
@@ -16,7 +16,7 @@ include      = ["src/**", "README.md", "LICENSE-*", "THIRD-PARTY-NOTICES.md"]
 [dependencies]
 unpopped       = "~0.59.1"
 unpopped-vocab = "~0.59.1"
-vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.28" }
+vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.29" }
 
 [dev-dependencies]
 # The published decline fixtures (ROADMAP 9h): one checker-valid kernel or module per `Stmt` variant.
