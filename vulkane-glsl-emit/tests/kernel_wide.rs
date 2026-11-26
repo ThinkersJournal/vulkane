@@ -128,3 +128,70 @@ fn a_dtype_with_no_spelling_is_a_typed_decline_naming_the_lowered_ones() {
         "{err:?}"
     );
 }
+
+/// An `I64` kernel of one `ReadWrite` buffer cell whose body is `body`, for the decline tests.
+fn one_cell_kernel(body: Vec<unpopped::kernel::Stmt>) -> KernelFn {
+    use unpopped::exec::LaunchShape;
+    use unpopped::kernel::{Block, BufferRole, Param};
+    let mut k = KernelFn::new(
+        "wide_decline",
+        I64,
+        vec![Param::buffer("out", I64, BufferRole::ReadWrite, Some(1))],
+        vec![],
+        Block(body),
+    );
+    k.launch = Some(LaunchShape::new([1, 1, 1], [1, 1, 1]));
+    k
+}
+
+fn declined_naming(k: &KernelFn, needle: &str) {
+    match Glsl.lower_kernel(k) {
+        Err(
+            unpopped::backend::LowerError::UnsupportedKernel { detail }
+            | unpopped::backend::LowerError::UnsupportedOp { detail },
+        ) => {
+            assert!(detail.contains(needle), "wanted `{needle}` in `{detail}`");
+        }
+        other => panic!("wanted an UnsupportedKernel naming `{needle}`, got {other:?}"),
+    }
+}
+
+/// The CHANGELOG promises that a wide GLSL kernel declines integer division, atomics and a specialization-constant extent
+/// by name; the shared wide kernel is truncated above (its `Div` columns cut away), so these pin the declines so a later
+/// rung cannot start lowering one silently (review of #170, Low).
+#[test]
+fn a_wide_kernel_declines_division_atomics_and_a_specialization_constant_extent() {
+    use unpopped::exec::{AllocDecl, Extent, MemorySpace, Scope};
+    use unpopped::ir::ScalarExpr as E;
+    use unpopped::kernel::{AtomicOp, LocalDecl, MemoryOrder, Param, Place, Stmt};
+    // Division: the untruncated shared kernel holds `Div` columns.
+    declined_naming(&wide_kernel::wide_kernel(I64), "Div");
+    // An atomic: GLSL has no 64-bit atomic spelling here.
+    let cell = Place::Logical {
+        buffer: 0,
+        coords: vec![E::ConstInt(0, I64)],
+    };
+    let atomic = one_cell_kernel(vec![Stmt::AtomicRmw {
+        op: AtomicOp::Add,
+        place: cell.clone(),
+        value: E::ConstInt(1, I64),
+        old: None,
+        order: MemoryOrder::Relaxed,
+        scope: Scope::Device,
+    }]);
+    declined_naming(&atomic, "atomic");
+    // A specialization-constant extent: the scalar parameter `n` of the compute dtype sizes a shared array.
+    let mut spec = one_cell_kernel(vec![Stmt::Store {
+        place: cell,
+        value: E::ConstInt(1, I64),
+    }]);
+    spec.params.push(Param::scalar("n", I64, 0));
+    spec.locals.push(LocalDecl::scalar(I64));
+    spec.allocs = vec![AllocDecl::new(
+        "tile",
+        MemorySpace::Shared,
+        I64,
+        Extent::Param(0),
+    )];
+    declined_naming(&spec, "specialization-constant extent");
+}

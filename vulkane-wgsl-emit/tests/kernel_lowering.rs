@@ -501,3 +501,27 @@ fn k() {}
         "naga now accepts `enable subgroups;`? lift the decline"
     );
 }
+
+/// The WGSL dialect has no 64-bit integer spelling: an `I64` kernel is declined by name (review of #170, Low).
+#[test]
+fn an_i64_kernel_is_declined_by_name() {
+    use unpopped::exec::LaunchShape;
+    use unpopped::ir::ScalarExpr as E;
+    use unpopped::kernel::{Block, BufferRole, Param, Place, Stmt};
+    use unpopped_vocab::ElementKind::{I64, U32};
+    let mut k = KernelFn::new(
+        "wide_decline",
+        I64,
+        vec![Param::buffer("out", I64, BufferRole::ReadWrite, Some(1))],
+        vec![],
+        Block(vec![Stmt::Store {
+            place: Place::Logical {
+                buffer: 0,
+                coords: vec![E::ConstInt(0, U32)],
+            },
+            value: E::ConstInt(1, I64),
+        }]),
+    );
+    k.launch = Some(LaunchShape::new([1, 1, 1], [1, 1, 1]));
+    declined(&k, "no 64-bit integer spelling");
+}

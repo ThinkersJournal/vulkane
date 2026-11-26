@@ -163,6 +163,18 @@ fn buffer(d: &dyn Dialect, kernel: &KernelFn, i: usize) -> Result<Decl, LowerErr
                 len_spec: None,
             })
         }
+        ParamKind::Scalar { ty, local }
+            if *ty == kernel.compute && sizes_array(kernel, *local) && d.wide() =>
+        {
+            Err(refuse(
+                d.name(),
+                kernel,
+                format!(
+                    "a specialization-constant extent (parameter `{}`) is not lowered for a 64-bit kernel",
+                    p.name
+                ),
+            ))
+        }
         _ => {
             let narrow = match &p.kind {
                 ParamKind::Buffer { elem, .. } => narrow_reason(d, *elem),
