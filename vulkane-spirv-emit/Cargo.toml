@@ -26,7 +26,7 @@ vulkane            = { path = "../vulkane" }
 # G4.2: the host reference the device results are compared with.
 unpopped-cpu-c     = "~0.58.0"
 # Cross-check: the Slang emitter, compiled by `slangc`, against this one on the same device.
-fishstringer-slang-emit = "~0.6.0"
+fishstringer-slang-emit = "~0.7.0"
 tempfile           = { workspace = true }
 
 [lints.rust]
