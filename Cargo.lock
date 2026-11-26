@@ -726,7 +726,7 @@ checksum = "7eb360dd97d6697898c9f15ab46377a84eef55a4dbb02f8a2846c1fc36fce1a0"
 
 [[package]]
 name = "kiss-vulkan-vocab"
-version = "0.28.0"
+version = "0.28.1"
 
 [[package]]
 name = "lalrpop-util"
@@ -2062,7 +2062,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vulkan_gen"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "regex",
  "roxmltree 0.21.2",
@@ -2074,10 +2074,10 @@ dependencies = [
 
 [[package]]
 name = "vulkane"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "fishstringer-kernels-source",
- "kiss-vulkan-vocab 0.28.0",
+ "kiss-vulkan-vocab 0.28.1",
  "libloading 0.9.1",
  "naga",
  "raw-window-handle",
@@ -2091,7 +2091,7 @@ dependencies = [
 
 [[package]]
 name = "vulkane-glsl-emit"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "tempfile",
  "unpopped",
@@ -2103,7 +2103,7 @@ dependencies = [
 
 [[package]]
 name = "vulkane-hlsl-emit"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "fishstringer-slang-emit",
  "tempfile",
@@ -2118,7 +2118,7 @@ dependencies = [
 
 [[package]]
 name = "vulkane-hlsl-parse"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "tree-sitter",
  "tree-sitter-hlsl",
@@ -2129,7 +2129,7 @@ dependencies = [
 
 [[package]]
 name = "vulkane-kernel-text"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "unpopped",
  "unpopped-vocab",
@@ -2137,25 +2137,25 @@ dependencies = [
 
 [[package]]
 name = "vulkane-kernels-source"
-version = "0.28.0"
+version = "0.28.1"
 
 [[package]]
 name = "vulkane-slang-emit"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "fishstringer-slang-emit",
 ]
 
 [[package]]
 name = "vulkane-slang-parse"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "fishstringer-slang-parse",
 ]
 
 [[package]]
 name = "vulkane-spirv-emit"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "fishstringer-slang-emit",
  "rspirv",
@@ -2169,7 +2169,7 @@ dependencies = [
 
 [[package]]
 name = "vulkane-spirv-parse"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "rspirv",
  "thiserror 2.0.21",
@@ -2177,7 +2177,7 @@ dependencies = [
 
 [[package]]
 name = "vulkane-wgsl-emit"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "naga",
  "tempfile",
@@ -2191,7 +2191,7 @@ dependencies = [
 
 [[package]]
 name = "vulkane-wgsl-parse"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "naga",
  "wgsl-parse",
@@ -2199,7 +2199,7 @@ dependencies = [
 
 [[package]]
 name = "vulkane_derive"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "proc-macro2",
  "quote",
