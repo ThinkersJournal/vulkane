@@ -9,10 +9,18 @@ use vulkane_test_support::stmt_kernel;
 #[test]
 fn an_nvidia_specific_statement_is_refused_by_name_with_its_reason() {
     for (name, stmt, phrase) in stmt_kernel::nvidia_unit_statements() {
-        match Msl.lower_kernel(&stmt_kernel::kernel_with(stmt)) {
+        // The one-statement kernel passes the kernel checker, so the refusal below is the emitter's own classification.
+        let k = stmt_kernel::kernel_with(stmt.clone());
+        assert!(
+            unpopped::kernel::check_kernel(&k).is_ok(),
+            "{name}: {:?}",
+            unpopped::kernel::check_kernel(&k)
+        );
+        match Msl.lower_kernel(&k) {
             Err(LowerError::UnsupportedKernel { detail }) => {
                 assert!(
-                    detail.contains(&format!("Stmt::{name}"))
+                    !detail.contains("check_kernel refused")
+                        && detail.contains(&format!("Stmt::{name}"))
                         && detail.contains("NVIDIA-specific")
                         && detail.contains(phrase),
                     "{name}: {detail}"

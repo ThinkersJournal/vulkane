@@ -1,0 +1,183 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Advisory macOS Metal probe, its own file so it does not run every ci.yml job on its branch
+# (pm-kernels, 2026-11-25). Not in branch protection. The push trigger on the branch is for the
+# first run only: drop it before the PR (leave pull_request + workflow_dispatch).
+name: Metal probe
+
+on:
+  push:
+    branches: [macos-metal-probe]
+  workflow_dispatch: {}
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ADVISORY, not required (pm-kernels TASK 2026-11-25; never put it in branch protection yet).
+  # Compiles the MSL `vulkane-msl-emit` emits with Apple's own compiler, which the text-pinned
+  # tests cannot do, and records what a hosted macOS runner returns for a Metal device. A compile
+  # failure of an emitted kernel fails THIS job (red = the emitter wrote MSL Metal rejects); the
+  # function-constant-extent probe and the device probe only record, whatever they find.
+  metal:
+    name: metal (MSL compile + device probe, advisory)
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable (branch HEAD)
+      - name: Dump the emitted MSL
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/msl"
+          VULKANE_MSL_DUMP_DIR="$RUNNER_TEMP/msl" cargo test -p vulkane-msl-emit --test metal_dump
+          n=$(wc -l < "$RUNNER_TEMP/msl/MANIFEST.txt" | tr -d ' ')
+          f=$(ls "$RUNNER_TEMP"/msl/*.metal | wc -l | tr -d ' ')
+          echo "manifest=$n files=$f"
+          test "$n" -ge 20
+          test "$n" = "$f"
+      - name: Toolchain versions
+        run: |
+          xcodebuild -version
+          xcrun -sdk macosx metal --version
+          sw_vers
+      - name: Compile every emitted kernel (metal -c) and link (metallib)
+        run: |
+          set -uo pipefail
+          cd "$RUNNER_TEMP/msl"
+          fail=0
+          for f in *.metal; do
+            if xcrun -sdk macosx metal -std=metal3.2 -c "$f" -o "${f%.metal}.air" 2> "${f%.metal}.err"; then
+              echo "ok    $f"
+            else
+              echo "FAIL  $f"; sed 's/^/    /' "${f%.metal}.err"; fail=$((fail+1))
+            fi
+          done
+          ok=$(ls *.air 2>/dev/null | wc -l | tr -d ' ')
+          total=$(ls *.metal | wc -l | tr -d ' ')
+          echo "compiled $ok of $total, failed $fail"
+          {
+            echo "### MSL compile (xcrun metal -std=metal3.2 -c)"
+            echo "compiled $ok of $total kernels; failed $fail"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$ok" -eq "$total"
+          test "$fail" -eq 0
+          # One library per kernel: two emitted kernels share the name `atomics` (the plain and the racy
+          # control), and one library of both fails with `multiple symbols ('atomics')`.
+          for a in *.air; do xcrun -sdk macosx metallib "$a" -o "${a%.air}.metallib"; done
+          ls *.metallib | wc -l
+      - name: Device run - write the conformance cases and build one metallib per case
+        if: always()
+        run: |
+          set -uo pipefail
+          export VULKANE_MSL_DEVICE_DIR="$RUNNER_TEMP/dev"
+          cargo test -p vulkane-msl-emit --test metal_device device_cases_are_written
+          cd "$VULKANE_MSL_DEVICE_DIR"
+          test "$(wc -l < CASES.txt | tr -d ' ')" -ge 25
+          for f in *.metal; do
+            n="${f%.metal}"
+            if xcrun -sdk macosx metal -std=metal3.2 -c "$f" -o "$n.air" 2> "$n.err" && xcrun -sdk macosx metallib "$n.air" -o "$n.metallib" 2>> "$n.err"; then
+              :
+            else
+              echo "BUILD FAIL $n"; cat "$n.err"
+            fi
+          done
+          ls *.metallib | wc -l
+      - name: Device run - dispatch every case on the Metal device (records errors verbatim)
+        if: always()
+        run: |
+          set +e
+          xcrun -sdk macosx swiftc .github/metal/run.swift -o "$RUNNER_TEMP/run"
+          "$RUNNER_TEMP/run" "$RUNNER_TEMP/dev" 2>&1 | tee "$RUNNER_TEMP/run.log"
+          {
+            echo "### Device run (dispatch on the hosted Metal device)"
+            echo '```'; cat "$RUNNER_TEMP/run.log"; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+      - name: Device run - compare every output with the oracles (a mutant or control must DIFFER)
+        if: always()
+        run: |
+          set -o pipefail
+          VULKANE_MSL_DEVICE_DIR="$RUNNER_TEMP/dev" cargo test -p vulkane-msl-emit --test metal_device device_results_match_the_oracles -- --nocapture 2>&1 | tee "$RUNNER_TEMP/check.log"
+          rc=${PIPESTATUS[0]}
+          {
+            echo "### Device oracle check (a paravirtual device, not physical Apple hardware)"
+            echo '```'; grep -E 'DEVICE|test result|panicked' "$RUNNER_TEMP/check.log"; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+      - name: Probe - function constant as a threadgroup array extent (records, never fails)
+        if: always()
+        run: |
+          set +e
+          out=$(xcrun -sdk macosx metal -std=metal3.2 -c .github/metal/function_constant_extent.metal -o "$RUNNER_TEMP/fc.air" 2>&1)
+          rc=$?
+          echo "$out"
+          {
+            echo "### Function-constant threadgroup extent (MSL 5.8 claim)"
+            echo "metal -c exit code: $rc (0 = Metal accepts it, nonzero = it rejects it)"
+            echo '```'; echo "$out"; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+      - name: Probe - 64-bit atomics (atomic_ulong) under several flags (records, never fails)
+        if: always()
+        run: |
+          set +e
+          {
+            echo "### atomic_ulong (atomic_fetch_max_explicit) under several compiler flags"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          for flags in "-std=metal3.2" "-std=metal3.1" "-std=metal4.0" "-std=metal3.2 -mmacosx-version-min=15.0" "-std=metal4.0 -mmacosx-version-min=26.0"; do
+            out=$(xcrun -sdk macosx metal $flags -c .github/metal/atomic_ulong.metal -o "$RUNNER_TEMP/au.air" 2>&1)
+            rc=$?
+            line="rc=$rc  metal $flags  $(echo "$out" | grep -m1 -E 'error|warning' | cut -c1-200)"
+            echo "$line"
+            echo "$line" >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+      - name: Probe - MTLCreateSystemDefaultDevice (records, never fails)
+        if: always()
+        run: |
+          set +e
+          xcrun -sdk macosx swiftc .github/metal/probe.swift -o "$RUNNER_TEMP/probe"
+          out=$("$RUNNER_TEMP/probe" 2>&1)
+          echo "$out"
+          {
+            echo "### Metal device probe (hosted macos-latest)"
+            echo '```'; echo "$out"; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+      - name: Probe - SIMD-group matrix and matmul2d, compile only (records, never fails)
+        if: always()
+        run: |
+          set +e
+          {
+            echo "### simdgroup_matrix and matmul2d (MSL 4.1 sections 2.4, 6.8, 7.2.1): compile only, never run"
+            echo "Lifted by CireSnave 2026-11-26 (board 519 B) as his risk call; not a clearance; no attorney; the Intel/NVIDIA tile-instruction method and medium claims remain NEEDS MORE as read."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          probe() {
+            label="$1"; src="$2"; shift 2
+            out=$(xcrun -sdk macosx metal "$@" -c "$src" -o "$RUNNER_TEMP/sg.air" 2>&1)
+            rc=$?
+            line="rc=$rc  [$label]  metal $*  $(echo "$out" | grep -m1 -E 'error' | cut -c1-180)"
+            echo "$line"
+            echo "$line" >> "$GITHUB_STEP_SUMMARY"
+          }
+          S=.github/metal/simdgroup_matrix.metal
+          probe "float8x8 mad (spec example)" $S -std=metal3.2
+          probe "float8x8 mad" $S -std=metal3.0
+          probe "float8x8 mad" $S -std=metal4.0
+          probe "half8x8 mad" $S -std=metal3.2 -DT_HALF
+          probe "bfloat8x8 mad (Metal 3.1+)" $S -std=metal3.2 -DT_BFLOAT
+          probe "bfloat8x8 mad under metal3.0 (expect refused)" $S -std=metal3.0 -DT_BFLOAT
+          probe "MIXED half a,b float c,r (expect refused)" $S -std=metal3.2 -DMIXED
+          probe "16x16 (expect refused)" $S -std=metal3.2 -DBIG16
+          probe "matmul2d TensorOp (Metal 4)" .github/metal/matmul2d_tensor.metal -std=metal4.0
+          probe "matmul2d TensorOp under metal3.2 (expect refused)" .github/metal/matmul2d_tensor.metal -std=metal3.2
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          exit 0

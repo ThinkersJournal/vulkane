@@ -33,6 +33,16 @@
 //! the rounding mode are the device's (MSL 8.1, 8.2: denormals "may be flushed to zero"; "either round ties to even
 //! or round toward zero ... may be supported"): no pragma makes a Metal float kernel bit-exact IEEE.
 //!
+//! **Exactness is NOT claimed for `F32` or `Bf16` (KISS ops spec, the bit-stable clause: "a kernel that flushes subnormal inputs
+//! or results to zero (FTZ/DAZ) does not round at the storage dtype's full precision, so it is non-conformant under
+//! bit-stable and MUST decline `Exact` rather than advertise the value").** Measured on the hosted paravirtual Metal
+//! device (run 45748530618): `F32` and `Bf16` flush subnormals to zero, `F16` preserves them. So no output of this emitter
+//! may be advertised as `Exact`/bit-stable for `F32` or `Bf16` on that device, and `F16` can be (for the value pairs
+//! tested there). The emitter has no exactness or fidelity declaration to make decline: `Backend` carries none, the plan
+//! path (`lower`, and so `lower_variants`' default of no variants) is not implemented, and a `GeneratedKernel` states none.
+//! A caller that needs `Exact` must decline `F32`/`Bf16` MSL itself; the subnormal device cases print a `DEVICE note` with
+//! what a device does.
+//!
 //! Atomics (`AtomicRmw` Add/Min/Max/And/Or/Xor/Exchange, `AtomicCas`) on `I32`/`U32` buffers and `threadgroup` arrays: the
 //! target is declared `atomic_int`/`atomic_uint`, every access is `atomic_*_explicit` with `memory_order_relaxed`, and the
 //! compare-exchange (Metal has only the weak form, whose spurious failure the IR cannot express) is retried while the value
@@ -73,8 +83,8 @@
 //! ## Declined by name
 //!
 //! A kernel named with an MSL keyword or type name (`float`, `kernel`, `tid`, ...: `kernel void float(` cannot compile),
-//! `Bf16` with a non-bfloat constant, `Fp8*`, `F64` (Metal has no `double`), `Div`, `Sqrt` and the transcendentals (looser bound than the contract tier), other
-//! 64-bit kernels, float atomics, a subgroup-scope atomic, scalar parameters, the device ids
+//! `Bf16` with a non-bfloat constant, `Fp8*`, `F64` (Metal has no `double`), float `Div` (integer `Div` is lowered, total: a zero divisor gives the dividend), `Sqrt` and the transcendentals (looser bound than the contract tier),
+//! 64-bit atomics (only max/min on `atomic_ulong` are permitted by the specification and the hosted device cannot create a pipeline for them: ROADMAP 8r), float atomics, a subgroup-scope atomic, scalar parameters, the device ids
 //! (`DeviceRank`, `DeviceCount`), and a `Barrier` or `Fence` at a scope other than block or subgroup (a barrier) / block or device (a
 //! fence): each a typed `UnsupportedKernel` from the shared walker naming it. The twelve NVIDIA-only
 //! statements of board 434 C are refused by name first. The plan path (`Backend::lower`) is not
@@ -215,7 +225,22 @@ impl Backend for Msl {
             };
             vulkane_kernel_text::lower_kernel(&d, kernel)?
         } else {
-            vulkane_kernel_text::lower_kernel(&dialect::IntKernel::default(), kernel)?
+            let wide = matches!(kernel.compute, ElementKind::I64 | ElementKind::U64);
+            let signed = matches!(kernel.compute, ElementKind::I32 | ElementKind::I64);
+            if wide && holds_atomic(&kernel.body) {
+                return Err(LowerError::UnsupportedKernel {
+                    detail: format!(
+                        "msl backend: a 64-bit atomic is not lowered: Metal has no signed 64-bit atomic type; the MSL specification (4.1, 6.16.4.6) permits only `atomic_max_explicit` and `atomic_min_explicit` on `atomic_ulong` (device memory, relaxed order, void result); the `atomic_fetch_*`, load, store and compare-exchange forms are rejected by the Apple compiler (run 45751376095), and the permitted max/min compile but the hosted paravirtual device fails to create a pipeline for them (run 45752252131), so no 64-bit atomic is measured on hardware (ROADMAP 8r) (kernel `{}`)",
+                        kernel.name
+                    ),
+                });
+            }
+            let d = dialect::IntKernel {
+                wide,
+                signed,
+                ..Default::default()
+            };
+            vulkane_kernel_text::lower_kernel(&d, kernel)?
         };
         Ok(with_subgroup_note(kernel, generated))
     }
@@ -238,4 +263,15 @@ fn with_subgroup_note(kernel: &KernelFn, g: GeneratedKernel) -> GeneratedKernel 
         1,
     );
     GeneratedKernel::new(g.name, source)
+}
+
+/// Whether `block` holds an atomic read-modify-write or compare-exchange at any depth.
+fn holds_atomic(block: &unpopped::kernel::Block) -> bool {
+    use unpopped::kernel::Stmt;
+    block.0.iter().any(|s| match s {
+        Stmt::AtomicRmw { .. } | Stmt::AtomicCas { .. } => true,
+        Stmt::If { then, els, .. } => holds_atomic(then) || holds_atomic(els),
+        Stmt::For { body, .. } | Stmt::While { body, .. } => holds_atomic(body),
+        _ => false,
+    })
 }
