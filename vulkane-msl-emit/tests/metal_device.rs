@@ -19,9 +19,9 @@ use unpopped::kernel::KernelFn;
 use unpopped_vocab::ElementKind;
 use vulkane_msl_emit::Msl;
 use vulkane_test_support::{
-    atomic_kernel, bf16_kernel, collective_kernel, div_kernel, float_kernel, flow_kernel,
-    grid_kernel, half_kernel, masked_kernel, narrow_kernel, private_kernel, reverse_kernel,
-    subgroup_kernel, wide_kernel,
+    atomic_kernel, bf16_kernel, collective_kernel, div_kernel, float_collective_kernel,
+    float_kernel, flow_kernel, grid_kernel, half_kernel, masked_kernel, narrow_kernel,
+    private_kernel, reverse_kernel, subgroup_kernel, wide_kernel,
 };
 
 const SENTINEL: u32 = 0xAAAA_AAAA;
@@ -467,6 +467,30 @@ fn cases() -> Vec<Case> {
             }),
         });
     }
+
+    // Board 506 A float ruling (pm-kernels 2026-11-27): F32 Sum, Max and Min, over eight subgroups with NaN in the first, last and a middle
+    // lane, all NaN, NaN with +inf, NaN with both infinities, and signed zeros. Max and Min are exact-byte and must propagate NaN
+    // (KISS-OPS-6.11-0002; the +-0 cells are excluded: unpinned); Sum is compared under OUR tolerance, not a KISS bound. Measured on the
+    // hosted paravirtual device only; safe math; fast-math not measured.
+    for (name, kind) in float_collective_kernel::kinds() {
+        v.push(Case {
+            name: format!("float_collective_{name}"),
+            kernel: float_collective_kernel::kernel(kind.clone()),
+            grid: Some([1, 1, 1]),
+            inputs: vec![float_collective_kernel::input()],
+            out_cells: float_collective_kernel::BLOCK as usize,
+            check: Box::new(move |o| {
+                if o.simd != float_collective_kernel::SUBGROUP {
+                    return Err(format!(
+                        "the device ran subgroups of {} lanes, not the launch's stated {}: the case does not apply",
+                        o.simd,
+                        float_collective_kernel::SUBGROUP
+                    ));
+                }
+                float_collective_kernel::check(&kind, &o.words)
+            }),
+        });
+    }
     v
 }
 
@@ -474,8 +498,10 @@ fn cases() -> Vec<Case> {
 /// permits for a 64-bit atomic, per the specification) before the emitter spells it.
 struct RawCase {
     name: &'static str,
-    source: &'static str,
+    source: String,
     entry: &'static str,
+    /// Input buffers (hex words), bound before the output buffer; empty for a case that makes its own data.
+    inputs: Vec<Vec<u32>>,
     block: [u32; 3],
     grid: [u32; 3],
     out_cells: usize,
@@ -492,7 +518,7 @@ fn raw_cases() -> Vec<RawCase> {
     let max_base = 0xBBBB_BBBB_0000_0000u64;
     vec![RawCase {
         name: "raw_atomic_ulong_max_min",
-        source: "// Hand-written (not emitted): MSL 4.1 6.16.4.6 atomic modify functions on atomic_ulong.
+        source: String::from("// Hand-written (not emitted): MSL 4.1 6.16.4.6 atomic modify functions on atomic_ulong.
 #include <metal_stdlib>
 using namespace metal;
 // threadsPerThreadgroup: 64 x 1 x 1
@@ -505,7 +531,8 @@ kernel void au_minmax(
     atomic_max_explicit(&b0[0], 0xBBBBBBBB00000000ul + g, memory_order_relaxed);
     atomic_min_explicit(&b0[1], (g + 1ul) + 8589934592ul, memory_order_relaxed);
 }
-",
+"),
+        inputs: vec![],
         entry: "au_minmax",
         block: [64, 1, 1],
         grid: [16, 1, 1],
@@ -528,7 +555,40 @@ kernel void au_minmax(
             Ok(())
         }),
     },
-    float_collective_measure()]
+    float_collective_measure(),
+    float_collective_mutant(),
+    ]
+}
+
+/// The vacuity mutant of the float Max case: the SAME lowered kernel with the NaN select removed (a bare `simd_max`). On the device
+/// `simd_max` ignores a NaN lane (measured, vulkane#189), so this must be REJECTED by the comparator; the case passes only if it is.
+fn float_collective_mutant() -> RawCase {
+    let kind = unpopped::kernel::CollectiveKind::Reduce(unpopped::ir::ReduceOp::Max);
+    let g = Msl
+        .lower_kernel(&float_collective_kernel::kernel(kind.clone()))
+        .expect("the float Max kernel lowers");
+    let good = "select(simd_max(l0), NAN, simd_any(isnan(l0)))";
+    assert!(g.source.contains(good), "{}", g.source);
+    let source = g.source.replace(good, "simd_max(l0)");
+    assert_ne!(source, g.source);
+    RawCase {
+        name: "raw_float_collective_max_vs_no_nan_select",
+        source,
+        entry: "fcollective",
+        inputs: vec![float_collective_kernel::input()],
+        block: [float_collective_kernel::BLOCK, 1, 1],
+        grid: [1, 1, 1],
+        out_cells: float_collective_kernel::BLOCK as usize,
+        refusal_is_a_note: false,
+        check: Box::new(
+            move |o| {
+                match float_collective_kernel::check(&kind, &o.words) {
+            Err(_) => Ok(()),
+            Ok(()) => Err("the mutant (no NaN select) was NOT rejected: the comparator does not discriminate".to_string()),
+        }
+            },
+        ),
+    }
 }
 
 /// The scenarios of the float-collective MEASURE-ONLY probe: per lane `l` of one 32-lane subgroup, the bit pattern each of
@@ -557,7 +617,7 @@ const FLOAT_SCENARIOS: [&str; 12] = [
 fn float_collective_measure() -> RawCase {
     RawCase {
         name: "raw_float_collective_measure",
-        source: "// Hand-written (not emitted): float simd_sum / simd_max / simd_min, measure only.
+        source: String::from("// Hand-written (not emitted): float simd_sum / simd_max / simd_min, measure only.
 #include <metal_stdlib>
 using namespace metal;
 #pragma METAL fp math_mode(safe)
@@ -595,7 +655,8 @@ kernel void fcoll(
         }
     }
 }
-",
+"),
+        inputs: vec![],
         entry: "fcoll",
         block: [32, 1, 1],
         grid: [1, 1, 1],
@@ -676,11 +737,14 @@ fn device_cases_are_written() {
     for r in raw_cases() {
         if let Some(d) = &dir {
             std::fs::create_dir_all(d).unwrap();
-            std::fs::write(d.join(format!("{}.metal", r.name)), r.source).unwrap();
+            std::fs::write(d.join(format!("{}.metal", r.name)), &r.source).unwrap();
             let mut s = String::new();
             let _ = writeln!(s, "entry {}", r.entry);
             let _ = writeln!(s, "grid {} {} {}", r.grid[0], r.grid[1], r.grid[2]);
             let _ = writeln!(s, "block {} {} {}", r.block[0], r.block[1], r.block[2]);
+            for i in &r.inputs {
+                let _ = writeln!(s, "buf {}", hex(i));
+            }
             let _ = writeln!(s, "buf {}", hex(&vec![SENTINEL; r.out_cells]));
             std::fs::write(d.join(format!("{}.case", r.name)), s).unwrap();
         }
