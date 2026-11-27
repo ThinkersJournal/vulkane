@@ -3,7 +3,7 @@
 
 use unpopped::exec::{ExecId, Scope};
 use unpopped::ir::{ArithOp, BinaryOp, RoundMode, UnaryOp};
-use unpopped::kernel::{AtomicOp, BufferRole, MemoryOrder};
+use unpopped::kernel::{AtomicOp, BufferRole, CollectiveKind, MemoryOrder};
 use unpopped_vocab::ElementKind;
 
 /// The comparisons both dialects spell with the same operator text; each gives `1` or `0` in the dtype.
@@ -92,6 +92,31 @@ impl Layout {
             .find(|(l, _)| usize::try_from(*l).is_ok_and(|l| l == local))
             .map(|(_, n)| n.as_str())
     }
+}
+
+/// One **subgroup collective** (board 506 "A", narrowed) for a dialect to spell: the ruled reductions, shuffles, votes and broadcasts
+/// of [`crate::collective_is_ruled`]. The walker has already lowered the value and the operand to text, and the checker
+/// (`check_kernel`) has already refused a collective after a lane-divergent `Return` (`CollectiveAfterReturn`) or under
+/// lane-divergent control (`BarrierDivergent`).
+///
+/// Lifted by CireSnave 2026-11-26 (board 506 A) as his risk call: "outside as read" is a reading of public documents, not a clearance;
+/// no attorney; findings, not advice.
+#[derive(Clone, Debug)]
+pub struct SubgroupCollective<'a> {
+    /// Which collective (a ruled one).
+    pub kind: &'a CollectiveKind,
+    /// The text of the value every lane contributes.
+    pub value: String,
+    /// The element type of the value.
+    pub value_elem: ElementKind,
+    /// The text of the shuffle operand or the broadcast lane, when the kind has one.
+    pub operand: Option<String>,
+    /// The operand's value when it is a constant (`ConstInt`), else `None`.
+    pub operand_const: Option<i64>,
+    /// Whether the kernel's integers are signed (`I32`) rather than unsigned (`U32`).
+    pub signed: bool,
+    /// The launch's stated subgroup size range, `(min, max)`, when the launch states one.
+    pub subgroup: Option<(u32, u32)>,
 }
 
 /// The spellings of one target language.
@@ -198,6 +223,25 @@ pub trait Dialect {
     /// no spelling. Only asked of a dialect whose [`Self::wide`] is true.
     fn cast_to_compute(&self, _x: &str, _from: ElementKind) -> Option<String> {
         None
+    }
+    /// Whether this dialect lowers the **ruled subgroup collectives** (board 506 "A": reductions, shuffles, votes, broadcasts at subgroup
+    /// scope). The default is no: every `Collective` is then refused by name with the board 434 C marker, as before. A dialect that says yes
+    /// spells them in [`Self::subgroup_collective`]; scans, user combines, `CollectiveTuple` and block scope stay refused by name whatever it says.
+    fn subgroup_collectives(&self) -> bool {
+        false
+    }
+    /// The expression a ruled subgroup collective evaluates to (assigned to the statement's result local), or the reason this dialect cannot
+    /// spell it exactly (the walker turns that into a typed decline naming the statement). Only asked when [`Self::subgroup_collectives`] is true.
+    ///
+    /// # Errors
+    /// The reason, in the dialect's terms.
+    fn subgroup_collective(&self, _c: &SubgroupCollective<'_>) -> Result<String, String> {
+        Err("this dialect has no spelling for a subgroup collective".to_string())
+    }
+    /// [`Self::prologue`] for a kernel that does (`collectives`) or does not use a subgroup collective: a dialect whose spelling needs a
+    /// directive or an entry parameter (WGSL `enable subgroups;`) adds it here. The default ignores the flag.
+    fn prologue_for(&self, layout: &Layout, _collectives: bool) -> String {
+        self.prologue(layout)
     }
     /// The header, buffer and shared declarations and the opening of the entry function, with the
     /// locals declared (one line each) at the top of the entry.

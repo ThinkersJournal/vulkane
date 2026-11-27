@@ -36,8 +36,10 @@ mod scope;
 mod stmt;
 
 pub use coverage::{Coverage, coverage, not_lowered_note};
-pub use decline::{DECLINED_434C, DECLINED_434C_EXT, declined_by_name};
-pub use dialect::{BIT_OPS, COMPARISONS, Decl, Dialect, Layout, operator};
+pub use decline::{
+    DECLINED_434C, DECLINED_434C_EXT, collective_is_ruled, declined_by_name, declined_by_name_with,
+};
+pub use dialect::{BIT_OPS, COMPARISONS, Decl, Dialect, Layout, SubgroupCollective, operator};
 pub use scalarize::scalarize;
 
 use unpopped::backend::{GeneratedKernel, LowerError};
@@ -53,7 +55,7 @@ pub fn lower_kernel(
     dialect: &dyn Dialect,
     kernel: &KernelFn,
 ) -> Result<GeneratedKernel, LowerError> {
-    if let Some(e) = declined_by_name(dialect.name(), kernel) {
+    if let Some(e) = declined_by_name_with(dialect.subgroup_collectives(), dialect.name(), kernel) {
         return Err(e);
     }
     // Packed values (vectors) become scalars first: `lower_dag` has no seam for them.
@@ -63,7 +65,7 @@ pub fn lower_kernel(
     // The body first: a rounding conversion in it adds a declaration to the prologue.
     let mut body = String::new();
     stmt::emit_body(dialect, kernel, &sc, &mut body)?;
-    let mut out = dialect.prologue(&sc.layout(kernel));
+    let mut out = dialect.prologue_for(&sc.layout(kernel), stmt::uses_collective(&kernel.body));
     out.push_str(&body);
     out.push_str(dialect.epilogue());
     Ok(GeneratedKernel::new(kernel.name.clone(), out))
