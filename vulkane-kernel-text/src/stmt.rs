@@ -9,11 +9,11 @@
 
 use unpopped::backend::LowerError;
 use unpopped::ir::ScalarExpr;
-use unpopped::kernel::{BarrierKind, Block, KernelFn, ParamKind, Place, Stmt};
+use unpopped::kernel::{BarrierKind, Block, CollectiveKind, KernelFn, ParamKind, Place, Stmt};
 use unpopped::types::{Ty, infer_ty_in};
 use unpopped_vocab::ElementKind;
 
-use crate::dialect::Dialect;
+use crate::dialect::{Dialect, SubgroupCollective};
 use crate::expr;
 use crate::scope::{Scope, place_name, place_ok, refuse};
 
@@ -31,6 +31,16 @@ struct W<'a> {
 }
 
 /// Write the body of `kernel` at one level of indentation.
+/// Whether `block` holds a `Collective` at any depth.
+pub(crate) fn uses_collective(block: &Block) -> bool {
+    block.0.iter().any(|s| match s {
+        Stmt::Collective { .. } => true,
+        Stmt::If { then, els, .. } => uses_collective(then) || uses_collective(els),
+        Stmt::For { body, .. } | Stmt::While { body, .. } => uses_collective(body),
+        _ => false,
+    })
+}
+
 pub(crate) fn emit_body(
     d: &dyn Dialect,
     kernel: &KernelFn,
@@ -169,6 +179,7 @@ impl W<'_> {
             Stmt::MaskedLoad { .. } | Stmt::MaskedStore { .. } => self.masked(s),
             Stmt::Barrier { .. } | Stmt::Fence { .. } => self.sync(s),
             Stmt::AtomicRmw { .. } | Stmt::AtomicCas { .. } => self.atomic(s),
+            Stmt::Collective { .. } => self.collective(s),
             Stmt::If { .. } | Stmt::For { .. } | Stmt::While { .. } => self.control(s),
             Stmt::Break => self.emit("break;"),
             Stmt::Continue => self.emit("continue;"),
@@ -307,6 +318,63 @@ impl W<'_> {
             )));
         };
         self.emit(&text)
+    }
+
+    /// A ruled subgroup collective (board 506 "A"): the dialect spells the expression, the walker assigns it to the statement's result
+    /// local. Reached only for a dialect that [`Dialect::subgroup_collectives`] and a kind of [`crate::collective_is_ruled`]; the by-name decline
+    /// has already refused every other `Collective`, and `check_kernel` every divergent placement.
+    fn collective(&mut self, s: &Stmt) -> Result<(), LowerError> {
+        let Stmt::Collective {
+            kind,
+            value,
+            result,
+            scope,
+        } = s
+        else {
+            unreachable!("`stmt` routes only collectives here");
+        };
+        if !self.d.subgroup_collectives() || !crate::collective_is_ruled(kind, *scope) {
+            return Err(self.no(format!(
+                "`Stmt::Collective` ({kind:?} at {scope:?}) is not lowered by this dialect"
+            )));
+        }
+        let value_elem = self.elem_of(value)?;
+        let value = self.expr(value)?;
+        let operand_expr = match kind {
+            CollectiveKind::Shuffle { operand, .. } => Some(operand),
+            CollectiveKind::Broadcast { lane } => Some(lane),
+            _ => None,
+        };
+        let (operand, operand_const) = match operand_expr {
+            Some(e) => {
+                let text = self.expr(e)?;
+                let constant = match e {
+                    ScalarExpr::ConstInt(v, _) => Some(*v),
+                    _ => None,
+                };
+                (Some(text), constant)
+            }
+            None => (None, None),
+        };
+        let subgroup = self
+            .kernel
+            .launch
+            .and_then(|l| l.subgroup)
+            .map(|g| (g.min, g.max));
+        let call = SubgroupCollective {
+            kind,
+            value,
+            value_elem,
+            operand,
+            operand_const,
+            signed: self.sc.signed,
+            subgroup,
+        };
+        let rhs = self
+            .d
+            .subgroup_collective(&call)
+            .map_err(|why| self.no(format!("`Stmt::Collective` ({kind:?}): {why}")))?;
+        self.emit(&format!("l{result} = {rhs};"))
     }
 
     fn control(&mut self, s: &Stmt) -> Result<(), LowerError> {

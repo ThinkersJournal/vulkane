@@ -5,10 +5,10 @@ use std::cell::Cell;
 use std::fmt::Write;
 
 use unpopped::exec::{ExecId, Scope};
-use unpopped::ir::{BinaryOp, RoundMode};
-use unpopped::kernel::{AtomicOp, BufferRole, MemoryOrder};
+use unpopped::ir::{BinaryOp, ReduceOp, RoundMode};
+use unpopped::kernel::{AtomicOp, BufferRole, CollectiveKind, MemoryOrder, ShuffleMode, VoteKind};
 use unpopped_vocab::ElementKind;
-use vulkane_kernel_text::{BIT_OPS, COMPARISONS, Dialect, Layout, operator};
+use vulkane_kernel_text::{BIT_OPS, COMPARISONS, Dialect, Layout, SubgroupCollective, operator};
 
 /// The MSL backend of Unpopped: [`Backend::lower_kernel`](unpopped::backend::Backend::lower_kernel) is the entry point.
 #[derive(Copy, Clone, Debug, Default)]
@@ -123,9 +123,113 @@ pub(crate) fn fence(scope: Scope, _order: MemoryOrder) -> Option<String> {
     ))
 }
 
+impl IntKernel {
+    /// The MSL expression of one ruled subgroup collective (board 506 "A", narrowed), or the reason it has no exact spelling.
+    ///
+    /// Spelled from the Metal Shading Language Specification 4.1, section 6.10.2 (Tables 6.14 and 6.15; read from the PDF on
+    /// 2026-11-26): the `simd_*` functions act on the ACTIVE threads, and the checker (`check_kernel`, unpopped 0.59.1 and later) admits
+    /// only uniform placements. `simd_shuffle_up` and `simd_shuffle_down` "doesn't modify the lower/upper delta lanes of data because
+    /// it doesn't wrap", which is the IR's own-value edge rule, so they need no select; `simd_shuffle_xor` states no result when
+    /// `lane ^ mask` is outside the SIMD-group, so it is spelled with an explicit in-range `select` (a function, which evaluates both
+    /// operands, so the shuffle stays under uniform control); `simd_shuffle` needs a valid lane, so the IR's `Idx` (`operand mod n`)
+    /// gets an explicit modulo; `simd_broadcast` is undefined unless its lane is valid and uniform, so it takes a constant below the
+    /// launch's stated minimum subgroup size. `Ballot` is declined until the `simd_vote` conversion is measured on a device.
+    fn spell_subgroup_collective(&self, c: &SubgroupCollective<'_>) -> Result<String, String> {
+        let v = &c.value;
+        let lane = |ids: &Ids| ids.exec(ExecId::LaneId, false).unwrap_or_default();
+        let size = |ids: &Ids| ids.exec(ExecId::SubgroupSize, false).unwrap_or_default();
+        match c.kind {
+            CollectiveKind::Reduce(op) => {
+                let f = match op {
+                    ReduceOp::Sum => "simd_sum",
+                    ReduceOp::Prod => "simd_product",
+                    ReduceOp::Max => "simd_max",
+                    ReduceOp::Min => "simd_min",
+                    ReduceOp::And => "simd_and",
+                    ReduceOp::Or => "simd_or",
+                    ReduceOp::Xor => "simd_xor",
+                    other => {
+                        return Err(format!("the reduction {other:?} has no MSL SIMD-group function"));
+                    }
+                };
+                Ok(format!("{f}({v})"))
+            }
+            CollectiveKind::Vote(kind) => match kind {
+                VoteKind::All => Ok(format!("(simd_all({v} != 0u) ? 1u : 0u)")),
+                VoteKind::Any => Ok(format!("(simd_any({v} != 0u) ? 1u : 0u)")),
+                VoteKind::Ballot => Err(
+                    "a Ballot is declined until the `simd_vote` to 32-bit mask conversion is measured on a device (MSL 4.1 6.10.2 returns a `simd_vote` wrapper)"
+                        .to_string(),
+                ),
+                other => Err(format!("the vote {other:?} has no MSL SIMD-group function")),
+            },
+            CollectiveKind::Broadcast { .. } => {
+                let (Some(k), Some((min, _))) = (c.operand_const, c.subgroup) else {
+                    return Err(
+                        "a Broadcast lane must be a constant below the launch's stated subgroup size (MSL: `simd_broadcast` is undefined unless the lane is valid and the same for every thread)"
+                            .to_string(),
+                    );
+                };
+                if k < 0 || k >= i64::from(min) {
+                    return Err(format!(
+                        "the Broadcast lane {k} is outside the launch's stated minimum subgroup size {min}"
+                    ));
+                }
+                Ok(format!("simd_broadcast({v}, (ushort){k})"))
+            }
+            CollectiveKind::Shuffle { mode, .. } => match mode {
+                ShuffleMode::Idx => {
+                    let op = c.operand.as_deref().unwrap_or("0u");
+                    let n = size(&self.ids);
+                    // The IR reads lane `operand mod n` (Euclidean); `simd_shuffle` needs a valid lane id.
+                    let id = if c.signed {
+                        format!("(((({op}) % (int){n}) + (int){n}) % (int){n})")
+                    } else {
+                        format!("(({op}) % {n})")
+                    };
+                    Ok(format!("simd_shuffle({v}, (ushort){id})"))
+                }
+                ShuffleMode::Up | ShuffleMode::Down | ShuffleMode::Xor => {
+                    let (Some(k), Some((min, _))) = (c.operand_const, c.subgroup) else {
+                        return Err(
+                            "a shuffle up, down or xor needs a CONSTANT delta or mask (MSL: the same for every thread) and a launch that states a subgroup size to bound it"
+                                .to_string(),
+                        );
+                    };
+                    if k < 0 || k >= i64::from(min) {
+                        return Err(format!(
+                            "the delta or mask {k} is outside the launch's stated minimum subgroup size {min} (the specification states no result beyond the SIMD-group)"
+                        ));
+                    }
+                    Ok(match mode {
+                        ShuffleMode::Up => format!("simd_shuffle_up({v}, (ushort){k})"),
+                        ShuffleMode::Down => format!("simd_shuffle_down({v}, (ushort){k})"),
+                        _ => {
+                            let (l, n) = (lane(&self.ids), size(&self.ids));
+                            format!(
+                                "select({v}, simd_shuffle_xor({v}, (ushort){k}), (({l} ^ {k}u) < {n}))"
+                            )
+                        }
+                    })
+                }
+                other => Err(format!("the shuffle mode {other:?} has no MSL SIMD-group function")),
+            },
+            other => Err(format!("the collective {other:?} has no MSL SIMD-group function")),
+        }
+    }
+}
+
 impl Dialect for IntKernel {
     fn name(&self) -> &'static str {
         "msl"
+    }
+
+    fn subgroup_collectives(&self) -> bool {
+        true
+    }
+
+    fn subgroup_collective(&self, c: &SubgroupCollective<'_>) -> Result<String, String> {
+        self.spell_subgroup_collective(c)
     }
 
     fn narrow_ints(&self) -> bool {
