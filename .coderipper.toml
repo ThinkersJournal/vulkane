@@ -32,6 +32,6 @@ components = ["vulkane-test-support"]
 [sup016]
 gate = true
 licence = "MIT OR Apache-2.0"
-extensions = [".rs", ".py", ".wgsl", ".comp", ".vert", ".frag", ".glsl", ".slang", ".hlsl", ".sh"]
+extensions = [".rs", ".py", ".wgsl", ".comp", ".vert", ".frag", ".glsl", ".slang", ".hlsl", ".sh", ".metal", ".swift"]
 min_files = 100
 copyright_expected = ["spdx_gate.py", "THIRD-PARTY-NOTICES.md", "vk.xml"]
