@@ -29,11 +29,13 @@
 mod decline;
 mod dialect;
 mod expr;
+mod scalarize;
 mod scope;
 mod stmt;
 
 pub use decline::{DECLINED_434C, DECLINED_434C_EXT, declined_by_name};
 pub use dialect::{BIT_OPS, COMPARISONS, Decl, Dialect, Layout, operator};
+pub use scalarize::scalarize;
 
 use unpopped::backend::{GeneratedKernel, LowerError};
 use unpopped::kernel::KernelFn;
@@ -51,6 +53,9 @@ pub fn lower_kernel(
     if let Some(e) = declined_by_name(dialect.name(), kernel) {
         return Err(e);
     }
+    // Packed values (vectors) become scalars first: `lower_dag` has no seam for them.
+    let scalarized = scalarize(kernel)?;
+    let kernel = scalarized.as_ref().unwrap_or(kernel);
     let sc = scope::check(dialect, kernel)?;
     // The body first: a rounding conversion in it adds a declaration to the prologue.
     let mut body = String::new();

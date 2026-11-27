@@ -25,13 +25,21 @@ pub(crate) struct Text {
     pub(crate) float: bool,
     /// Whether that float is `F64` (`GL_ARB_gpu_shader_fp64`).
     pub(crate) double: bool,
+    /// Whether that float is `F16` (`float16_t`, `GL_EXT_shader_explicit_arithmetic_types_float16`).
+    pub(crate) half: bool,
 }
 
 impl Text {
     /// The scalar type name.
     fn ty(self, signed: bool) -> &'static str {
         if self.float {
-            return if self.double { "double" } else { "float" };
+            return if self.double {
+                "double"
+            } else if self.half {
+                "float16_t"
+            } else {
+                "float"
+            };
         }
         match (self.wide, signed) {
             (false, true) => "int",
@@ -59,6 +67,7 @@ fn axis(a: u8) -> Option<char> {
 /// The declared type and zero of a float-kernel element type.
 fn float_elem(elem: ElementKind) -> Option<(&'static str, &'static str)> {
     Some(match elem {
+        ElementKind::F16 => ("float16_t", "0.0hf"),
         ElementKind::F32 => ("float", "0.0"),
         ElementKind::F64 => ("double", "0.0lf"),
         ElementKind::I32 => ("int", "0"),
@@ -147,9 +156,14 @@ impl Text {
             .iter()
             .map(|b| b.elem)
             .chain(layout.local_elems.iter().copied());
-        let mut widths: Vec<u32> = vec![if self.double { 64 } else { 32 }];
+        let mut widths: Vec<u32> = vec![match (self.double, self.half) {
+            (true, _) => 64,
+            (_, true) => 16,
+            _ => 32,
+        }];
         for e in elems {
             let w = match e {
+                ElementKind::F16 => 16,
                 ElementKind::F32 => 32,
                 ElementKind::F64 => 64,
                 _ => continue,
@@ -162,6 +176,11 @@ impl Text {
         let mut s = String::new();
         if widths.contains(&64) {
             s.push_str("#extension GL_ARB_gpu_shader_fp64 : require\n");
+        }
+        if widths.contains(&16) {
+            // Half arithmetic and 16-bit buffer elements.
+            s.push_str("#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n");
+            s.push_str("#extension GL_EXT_shader_16bit_storage : require\n");
         }
         s.push_str("#extension GL_EXT_spirv_intrinsics : require\n");
         for w in &widths {
@@ -192,6 +211,10 @@ impl Dialect for Text {
         self.double
     }
 
+    fn half(&self) -> bool {
+        self.half
+    }
+
     fn mixed_float_widths(&self) -> bool {
         // glslang keeps one `spirv_execution_mode` per mode, so a second width would silently replace
         // the first (measured with glslang 16.2: `DenormPreserve 32` then `64` leaves only 64).
@@ -203,6 +226,8 @@ impl Dialect for Text {
         // exponent, so it is a GLSL `float` literal.
         let text = if self.double {
             format!("{v:?}lf")
+        } else if self.half {
+            format!("{:?}hf", v as f32)
         } else {
             format!("{:?}", v as f32)
         };
@@ -231,6 +256,7 @@ impl Dialect for Text {
     fn truthy_of(&self, value: &str, t: ElementKind) -> String {
         let zero = match t {
             ElementKind::F64 => "0.0lf",
+            ElementKind::F16 => "0.0hf",
             ElementKind::F32 => "0.0",
             ElementKind::I32 => "0",
             _ => "0u",
@@ -284,6 +310,7 @@ impl Dialect for Text {
 
     fn type_name(&self, t: ElementKind) -> Option<String> {
         match t {
+            ElementKind::F16 => Some("float16_t".to_string()),
             ElementKind::F32 => Some("float".to_string()),
             ElementKind::F64 => Some("double".to_string()),
             ElementKind::U32 => Some("uint".to_string()),
@@ -295,7 +322,7 @@ impl Dialect for Text {
     fn temp_typed(&self, ty: &str, name: &str, rhs: &str) -> String {
         // A float temporary is `precise`: glslang then decorates every operation contributing to it
         // `NoContraction`, so a driver cannot fuse `a * b + c` into an FMA the source does not ask for.
-        let precise = if ty == "float" || ty == "double" {
+        let precise = if matches!(ty, "float" | "double" | "float16_t") {
             "precise "
         } else {
             ""
@@ -339,7 +366,7 @@ impl Dialect for Text {
                     .copied()
                     .and_then(float_elem)
                     .unwrap_or(("float", "0.0"));
-                let precise = if ty == "float" || ty == "double" {
+                let precise = if matches!(ty, "float" | "double" | "float16_t") {
                     "precise "
                 } else {
                     ""

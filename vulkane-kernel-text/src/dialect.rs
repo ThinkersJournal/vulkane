@@ -125,6 +125,11 @@ pub trait Dialect {
     fn double(&self) -> bool {
         false
     }
+    /// Whether the float kernel this instance lowers is `F16` (only asked when [`Self::float`] is
+    /// true): literals must then be exact halves.
+    fn half(&self) -> bool {
+        false
+    }
     /// Whether one kernel may use float types of two widths (`F32` and `F64` together). The default
     /// is yes; a dialect whose float-control declarations cannot name two widths says no, and such a
     /// kernel is a typed decline.
