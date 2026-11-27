@@ -29,19 +29,40 @@ const NEW: [ElementKind; 7] = [
     ElementKind::F8UE4M3,
 ];
 
+fn place() -> Place {
+    Place::Logical {
+        buffer: 0,
+        coords: vec![ScalarExpr::Exec(ExecId::ThreadIdx(0))],
+    }
+}
+
+/// The wide integers: computed by unpopped since 0.62 (ROADMAP E2), so the CHECKER no longer declines them and each emitter's own
+/// dtype gate must.
+fn is_wide(t: ElementKind) -> bool {
+    matches!(
+        t,
+        ElementKind::I128 | ElementKind::U128 | ElementKind::I256 | ElementKind::U256
+    )
+}
+
 fn kernel(t: ElementKind) -> KernelFn {
     KernelFn::new(
         "probe",
         t,
-        vec![Param::buffer("out", t, BufferRole::Write, Some(1))],
+        vec![Param::buffer("out", t, BufferRole::ReadWrite, Some(1))],
         vec![LocalDecl::scalar(t)],
-        Block(vec![Stmt::Store {
-            place: Place::Logical {
-                buffer: 0,
-                coords: vec![ScalarExpr::Exec(ExecId::ThreadIdx(0))],
+        // A load and a store of a local, not a constant: since unpopped 0.62 the four wide integers are computed dtypes,
+        // and an integer constant of one (`ConstInt(1, I128)`) is an illegal leaf the checker refuses first.
+        Block(vec![
+            Stmt::Load {
+                local: 0,
+                place: place(),
             },
-            value: ScalarExpr::ConstInt(1, t),
-        }]),
+            Stmt::Store {
+                place: place(),
+                value: ScalarExpr::Local(0),
+            },
+        ]),
     )
     .with_launch(LaunchShape::new([32, 1, 1], [1, 1, 1]))
 }
@@ -55,10 +76,19 @@ fn each_new_dtype_is_declined_by_name_as_a_kernel_dtype() {
     for t in NEW {
         match Wgsl.lower_kernel(&kernel(t)) {
             Err(LowerError::UnsupportedKernel { detail }) => {
-                assert!(
-                    detail.contains("DtypeNotComputed") && detail.contains(&format!("{t:?}")),
-                    "{t:?}: the refusal must name the dtype and the checker's variant, got: {detail}"
-                );
+                if is_wide(t) {
+                    assert!(
+                        detail.contains(&format!("{t:?}"))
+                            && !detail.contains("check_kernel refused")
+                            && !detail.contains("checker refuses"),
+                        "{t:?}: the EMITTER's own gate must name a wide integer, got: {detail}"
+                    );
+                } else {
+                    assert!(
+                        detail.contains("DtypeNotComputed") && detail.contains(&format!("{t:?}")),
+                        "{t:?}: the refusal must name the dtype and the checker's variant, got: {detail}"
+                    );
+                }
             }
             other => panic!("{t:?}: expected the typed UnsupportedKernel decline, got {other:?}"),
         }

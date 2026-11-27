@@ -43,6 +43,12 @@ pub fn coverage(stmt: &Stmt) -> Coverage {
         Stmt::Mma { .. } | Stmt::MatrixLoad { .. } | Stmt::MatrixStore { .. } => Coverage::Row(
             "ROADMAP row 8j: matrix multiply-accumulate waits on a device with the extension (SPIR-V, GLSL) and on Unpopped's tile statements (Metal)",
         ),
+        Stmt::TileLoad { .. }
+        | Stmt::TileMma { .. }
+        | Stmt::TileFill { .. }
+        | Stmt::TileStore { .. } => Coverage::Row(
+            "ROADMAP row 8j: the tile statements (unpopped 0.62) are declined by name until a device with the cooperative-matrix extension (SPIR-V, GLSL) or simdgroup matrices (Metal) can run them; no saturating variant and no transpose option (US12405770B2 hold)",
+        ),
         Stmt::CopyAsync { .. }
         | Stmt::AsyncCommit
         | Stmt::AsyncWait { .. }
@@ -120,6 +126,24 @@ mod tests {
                 "{s:?}"
             );
         }
+    }
+
+    #[test]
+    fn the_tile_statements_wait_on_row_8j_and_say_the_patent_hold() {
+        use unpopped::ir::ScalarExpr;
+        let fill = Stmt::TileFill {
+            d: 0,
+            value: ScalarExpr::ConstInt(1, unpopped_vocab::ElementKind::U32),
+        };
+        assert!(
+            matches!(coverage(&fill), Coverage::Row(why) if why.contains("row 8j")),
+            "{fill:?}"
+        );
+        let n = not_lowered_note(&fill).expect("a note");
+        assert!(
+            n.contains("US12405770B2") && n.contains("no transpose option"),
+            "{n}"
+        );
     }
 
     #[test]

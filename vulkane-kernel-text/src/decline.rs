@@ -128,6 +128,10 @@ fn nested(stmt: &Stmt, lift: bool) -> Option<Declined> {
         | Stmt::ProxyFence { .. }
         | Stmt::Fence { .. }
         | Stmt::Mma { .. }
+        | Stmt::TileLoad { .. }
+        | Stmt::TileMma { .. }
+        | Stmt::TileFill { .. }
+        | Stmt::TileStore { .. }
         | Stmt::MatrixLoad { .. }
         | Stmt::MatrixStore { .. }
         | Stmt::Wgmma { .. }

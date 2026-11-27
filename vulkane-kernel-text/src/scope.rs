@@ -272,6 +272,14 @@ fn shared(d: &dyn Dialect, kernel: &KernelFn, i: usize) -> Result<Decl, LowerErr
                 a.name
             ),
         )),
+        (MemorySpace::Tile, _) => Err(refuse(
+            d.name(),
+            kernel,
+            format!(
+                "allocation `{}` is in the Tile space (unpopped 0.62), which is declined by name until the tile statements are lowered (ROADMAP row 8j)",
+                a.name
+            ),
+        )),
         _ => Err(refuse(
             d.name(),
             kernel,
