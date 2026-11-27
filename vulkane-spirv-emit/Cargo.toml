@@ -18,7 +18,7 @@ rspirv         = "0.13.0"
 unpopped       = "~0.60.1"
 unpopped-vocab = "~0.60.1"
 # Packed values (vectors) are scalarized before lowering: `unpopped`'s `lower_dag` has no seam for them.
-vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.29" }
+vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.30" }
 
 [dev-dependencies]
 # The published decline fixtures (ROADMAP 9h): one checker-valid kernel or module per `Stmt` variant.
