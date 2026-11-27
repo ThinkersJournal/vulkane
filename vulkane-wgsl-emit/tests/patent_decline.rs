@@ -161,6 +161,20 @@ fn nested(f: &Fixture, shape: fn(Vec<Stmt>, u32) -> Vec<Stmt>) -> Fixture {
     with_entry(f, k)
 }
 
+/// The fixture with its one `Collective` statement's kind replaced.
+fn with_collective_kind(base: &Fixture, kind: CollectiveKind) -> Fixture {
+    let mut k = entry(base);
+    let mut replaced = 0;
+    for s in &mut k.body.0 {
+        if let Stmt::Collective { kind: slot, .. } = s {
+            *slot = kind.clone();
+            replaced += 1;
+        }
+    }
+    assert_eq!(replaced, 1, "the fixture holds exactly one Collective");
+    with_entry(base, k)
+}
+
 #[test]
 fn each_declined_statement_is_refused_by_name_at_every_depth() {
     assert_eq!(
@@ -169,7 +183,19 @@ fn each_declined_statement_is_refused_by_name_at_every_depth() {
         "the declined list is thirteen statements (twelve, and `CopyUnpack` since unpopped 0.58)"
     );
     for (name, marker) in DECLINED {
-        let base = fixture(name).unwrap_or_else(|| panic!("unpopped::fixtures has no `{name}`"));
+        let mut base =
+            fixture(name).unwrap_or_else(|| panic!("unpopped::fixtures has no `{name}`"));
+        if name == "Collective" {
+            // Board 506 A (narrowed; CireSnave 2026-11-26) lifted subgroup reductions, shuffles, votes and broadcasts, and the
+            // fixture holds one of those; a SCAN is still declined by name, so the by-name walk is driven with a scan.
+            base = with_collective_kind(
+                &base,
+                CollectiveKind::Scan {
+                    op: ReduceOp::Sum,
+                    exclusive: false,
+                },
+            );
+        }
         assert_valid(name, &base);
         assert!(
             contains(&entry(&base).body, name),
@@ -196,10 +222,19 @@ fn each_declined_statement_is_refused_by_name_at_every_depth() {
 }
 
 #[test]
-fn every_collective_kind_is_refused_by_name_the_new_exclusive_scans_included() {
-    // unpopped 0.58.4 added exclusive Max/Min/Prod scans and a Prod fold. A non-NVIDIA emitter declines the WHOLE
-    // `Collective` statement by name whatever its kind (board 434 C; board 506 holds subgroup scans for non-NVIDIA).
+fn only_the_collective_kinds_outside_the_ruled_set_are_refused_by_name() {
+    // unpopped 0.58.4 added exclusive Max/Min/Prod scans and a Prod fold. Board 506 A (narrowed; CireSnave 2026-11-26) lifted the
+    // SUBGROUP reductions, shuffles, votes and broadcasts (`collective_is_ruled`); every scan stays declined by name (board 434 C),
+    // and a ruled kind must NOT be refused by name. Lifted as his risk call: "outside as read" is a reading of public documents, not a
+    // clearance; no attorney; findings, not advice.
     let base = fixture("Collective").expect("a Collective fixture");
+    let scope = match entry(&base).body.0.iter().find_map(|s| match s {
+        Stmt::Collective { scope, .. } => Some(*scope),
+        _ => None,
+    }) {
+        Some(s) => s,
+        None => panic!("the fixture holds a Collective"),
+    };
     let mut kinds: Vec<(String, CollectiveKind)> = Vec::new();
     for op in [ReduceOp::Sum, ReduceOp::Max, ReduceOp::Min, ReduceOp::Prod] {
         kinds.push((format!("Reduce({op:?})"), CollectiveKind::Reduce(op)));
@@ -210,24 +245,34 @@ fn every_collective_kind_is_refused_by_name_the_new_exclusive_scans_included() {
             ));
         }
     }
+    let (mut ruled_n, mut declined_n) = (0, 0);
     for (label, kind) in kinds {
-        let mut k = entry(&base);
-        let mut replaced = 0;
-        for s in &mut k.body.0 {
-            if let Stmt::Collective { kind: slot, .. } = s {
-                *slot = kind.clone();
-                replaced += 1;
-            }
-        }
-        assert_eq!(replaced, 1, "the fixture holds exactly one Collective");
-        let f = with_entry(&base, k);
+        let ruled = vulkane_kernel_text::collective_is_ruled(&kind, scope);
+        let f = with_collective_kind(&base, kind);
         assert_valid(&label, &f);
-        let detail = refusal_of(&entry(&f));
-        assert!(
-            detail.contains("Stmt::Collective") && detail.contains(MARKER_434C),
-            "{label}: must be refused by name, got: {detail}"
-        );
+        let result = Wgsl.lower_kernel(&entry(&f));
+        if ruled {
+            ruled_n += 1;
+            if let Err(LowerError::UnsupportedKernel { detail }) = &result {
+                assert!(
+                    !detail.contains(MARKER_434C),
+                    "{label} is in the ruled set and must not be refused by name: {detail}"
+                );
+            }
+        } else {
+            declined_n += 1;
+            let Err(LowerError::UnsupportedKernel { detail }) = result else {
+                panic!("{label}: must be refused");
+            };
+            assert!(
+                detail.contains("Stmt::Collective") && detail.contains(MARKER_434C),
+                "{label}: must be refused by name, got: {detail}"
+            );
+        }
     }
+    // The table is complete: the fixture's scope decides; scans are declined whatever the scope.
+    assert_eq!(ruled_n + declined_n, 12);
+    assert!(declined_n >= 8, "the 8 scans are always declined");
 }
 
 #[test]

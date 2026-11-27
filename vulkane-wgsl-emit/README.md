@@ -13,6 +13,12 @@ WGSL has no way to request IEEE subnormal handling, so f32 results near zero are
 
 Not yet on crates.io (first publish is the PM's). Licensed under either of Apache-2.0 or MIT, at your option.
 
+## Subgroup collectives (board 506 A): emitted, unvalidated
+
+Board 506 A (narrowed; CireSnave 2026-11-26): lifted by CireSnave as his risk call; "outside as read" is a reading of public documents, not a clearance; no attorney; findings, not advice. Lifted: subgroup-scope `Reduce` (Sum, Prod, Max, Min, And, Or, Xor), `Shuffle`, `Vote` and `Broadcast`. Still declined by name with the 434 C marker: `Scan`, `ReduceWith`, `ScanWith`, `CollectiveTuple`, every block-scope collective, and every collective on GLSL and SPIR-V.
+
+**Emitted, not validated, not run on a device.** The WGSL text (`enable subgroups;`, `subgroupAdd` and the rest, explicit selects where the IR defines an edge WGSL leaves undefined) is pinned by tests against the WebGPU specification; no WGSL compiler in this repository's CI accepts `enable subgroups;` yet (naga 30.0.2 rejects it, which a test pins), so Tint or Dawn validation is a recorded ROADMAP row, not a claim.
+
 ## Declined: possible patent exposure (board 434 C and its extension)
 
 CireSnave 2026-11-16, verbatim: *"For that patent, we add a note about the potential for infringement if non-Nvidia-specific emitters lower those operations to hardware ops and we ensure our projects' emitters for other manufacturers' hardware know about that and we consider ourselves not infringing."* The patent is NVIDIA US11803380B2 (a synchronization barrier with an arrival counter, a phase and a hardware copy operator).

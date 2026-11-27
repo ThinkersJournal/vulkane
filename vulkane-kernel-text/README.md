@@ -20,4 +20,8 @@ The thirteen statements refused by name (the same list as `vulkane-kernel-text`'
 
 The refusal is a typed `UnsupportedKernel` whose text carries `declined: possible exposure, board 434 C` (the five) or `declined: possible exposure, board 434 C extended` (the eight), at the top level and inside `If`, `For` and `While` at any depth. This note is pinned by `tests/readme_note.rs`.
 
+## Subgroup collectives (board 506 A)
+
+Board 506 A (narrowed; CireSnave 2026-11-26): lifted by CireSnave as his risk call; "outside as read" is a reading of public documents, not a clearance; no attorney; findings, not advice. Lifted: subgroup-scope `Reduce` (Sum, Prod, Max, Min, And, Or, Xor), `Shuffle`, `Vote` and `Broadcast`. Still declined by name with the 434 C marker: `Scan`, `ReduceWith`, `ScanWith`, `CollectiveTuple`, every block-scope collective, and every collective on GLSL and SPIR-V. The walker's by-name decline takes a `lift_subgroup` flag (`declined_by_name_with`); a dialect that says `subgroup_collectives()` gets the ruled kinds as `Dialect::subgroup_collective` calls and keeps every other kind declined. A collective acts on the *active* invocations; the uniformity guard is Unpopped's `check_kernel`, which refuses a collective under divergent control or after a divergent return, so only uniform placements reach a dialect.
+
 Licensed under MIT OR Apache-2.0.
