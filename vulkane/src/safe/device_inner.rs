@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! The state shared between a device and its child handles (leaf module: depends on nothing in `safe`).
 
 use crate::raw::bindings::*;
