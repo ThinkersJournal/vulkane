@@ -1,0 +1,80 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Advisory WGSL validation with Dawn's `tint` (ROADMAP 8t). Not in branch protection. Runs on pull_request and by hand.
+#
+# Why: naga 30.0.2 (the latest published) rejects `enable subgroups;`, so the WGSL subgroup lowering of board 506 A is checked
+# against the WebGPU specification by text tests only. Tint is Google's WGSL compiler (the one Chrome ships).
+#
+# PROVENANCE of the binary (pinned, never "latest"): the official google/dawn GitHub release below, built by that repository's own
+# release workflow from the commit named in the asset (google/dawn commit 421e5b0ef6ec76ee8f49daa97e760ba8b42852fc, 2026-11-27).
+# The tarball's sha256 is pinned here and checked before extraction; it matched the digest GitHub reports for the asset when
+# it was chosen (2026-11-27). That proves the download is the asset, not that the asset is benign: it is a nightly build of
+# a Google project, extracted into a fresh directory and run only on this hosted runner, never on a developer machine. To move
+# the pin: pick a newer google/dawn release, read its ubuntu-latest-Release asset digest, change TAG and SHA256 together.
+name: Tint validate
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  DAWN_TAG: v20261126.172545
+  DAWN_ASSET: Dawn-421e5b0ef6ec76ee8f49daa97e760ba8b42852fc-ubuntu-latest-Release.tar.gz
+  DAWN_SHA256: 8cf9b2e236d1ecccd18aaa9464c262f962ebd2b99b2d500cbd03c302d829fae0
+
+jobs:
+  tint:
+    name: tint (WGSL subgroup lowering, advisory)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable (branch HEAD)
+      - name: Dump the emitted WGSL
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wgsl"
+          VULKANE_WGSL_DUMP_DIR="$RUNNER_TEMP/wgsl" cargo test -p vulkane-wgsl-emit --test tint_dump
+          test "$(wc -l < "$RUNNER_TEMP/wgsl/MANIFEST.txt" | tr -d ' ')" -eq 16
+          test "$(ls "$RUNNER_TEMP"/wgsl/*.wgsl | wc -l | tr -d ' ')" -eq 16
+      - name: Fetch the pinned Dawn release and check its digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dawn-dl" "$RUNNER_TEMP/dawn"
+          cd "$RUNNER_TEMP/dawn-dl"
+          gh release download "$DAWN_TAG" --repo google/dawn --pattern "$DAWN_ASSET"
+          echo "$DAWN_SHA256  $DAWN_ASSET" | sha256sum -c -
+          tar -xzf "$DAWN_ASSET" -C "$RUNNER_TEMP/dawn" --strip-components=1
+          ls -la "$RUNNER_TEMP/dawn/bin" | head -20
+      - name: Tint version and help (recorded)
+        run: |
+          set +e
+          T="$RUNNER_TEMP/dawn/bin/tint"
+          "$T" --version 2>&1 | head -5
+          "$T" --help 2>&1 | head -60
+          exit 0
+      - name: Validate every dumped WGSL with tint (records; the controls must behave)
+        run: |
+          set -uo pipefail
+          T="$RUNNER_TEMP/dawn/bin/tint"
+          cd "$RUNNER_TEMP/wgsl"
+          bad=0
+          while read -r name expect; do
+            f="$name.wgsl"
+            if "$T" --validate --format wgsl -o /dev/null "$f" > "$name.tint" 2>&1; then got=accept; else got=reject; fi
+            if [ "$got" = "$expect" ]; then verdict="as-expected"; else verdict="UNEXPECTED"; bad=$((bad+1)); fi
+            echo "$verdict  $name: expected $expect, tint said $got"
+            if [ "$got" = reject ]; then sed 's/^/    /' "$name.tint" | head -8; fi
+          done < MANIFEST.txt
+          {
+            echo "### Tint validation of the emitted WGSL (board 506 A subgroup collectives)"
+            echo "pinned Dawn $DAWN_TAG; $(wc -l < MANIFEST.txt | tr -d ' ') files; unexpected answers: $bad"
+          } >> "$GITHUB_STEP_SUMMARY"
+          # The first run RECORDS: a nonzero count is the finding, read from the log, not a red job yet.
+          exit 0
