@@ -30,3 +30,28 @@ fn an_nvidia_specific_statement_is_refused_by_name_with_its_reason() {
         }
     }
 }
+
+#[test]
+fn a_byte_addressed_place_is_refused_by_name_not_lowered_to_a_wrong_address() {
+    for (name, k) in vulkane_test_support::stmt_kernel::raw_place_kernels() {
+        unpopped::kernel::check_kernel(&k)
+            .unwrap_or_else(|e| panic!("{name}: the probe kernel must be checker-valid: {e:?}"));
+        match SpirV.lower_kernel(&k) {
+            Err(
+                unpopped::backend::LowerError::UnsupportedKernel { detail }
+                | unpopped::backend::LowerError::UnsupportedOp { detail }
+                | unpopped::backend::LowerError::UnsupportedDtype { detail, .. },
+            ) => {
+                assert!(
+                    detail.contains(name),
+                    "{name}: the refusal must name the place: {detail}"
+                );
+                assert!(
+                    !detail.contains("check_kernel refused"),
+                    "{name}: the refusal must be the emitter's own: {detail}"
+                );
+            }
+            other => panic!("{name}: wanted a typed refusal, got {other:?}"),
+        }
+    }
+}

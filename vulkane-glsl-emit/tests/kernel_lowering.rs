@@ -480,7 +480,7 @@ fn a_parameter_dependent_grid_is_declined_by_the_walker() {
 fn a_cluster_scope_fence_is_declined_by_the_dialect() {
     use unpopped::exec::Scope;
     use unpopped::kernel::{MemoryOrder, Stmt, check_kernel};
-    let mut k = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut k = reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     k.launch = k.launch.map(|mut l| {
         l.grid = [2, 1, 1];
         l.cluster = Some([2, 1, 1]);

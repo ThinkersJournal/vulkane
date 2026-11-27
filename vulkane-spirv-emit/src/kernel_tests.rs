@@ -395,7 +395,7 @@ fn an_atomic_on_a_private_array_is_a_typed_decline() {
 }
 
 /// Declines with no earlier test (an audit mutant that removed each passed every suite): a fence at a scope
-/// SPIR-V has no form for, an execution id the backend does not spell, and a cast that is not a wrapping integer cast.
+/// SPIR-V has no form for, an execution id the backend does not spell, and a cast that is not a wrapping integer cast (the cast pin was rewritten on 2026-11-27 for the current decline text and an identity-cast shortcut).
 /// Every fixture passes the kernel checker, so each refusal is this emitter's own.
 #[test]
 fn an_unspellable_fence_exec_id_and_cast_are_typed_declines() {
@@ -437,9 +437,18 @@ fn an_unspellable_fence_exec_id_and_cast_are_typed_declines() {
         ),
         (
             "cast",
+            // A clamping I32 -> U32 cast (an identity U32 -> U32 cast is spelled as the operand itself, so the clamp is only
+            // reached across types): the inner wrapping U32 -> I32 cast is lowered, the outer clamping one is declined.
             (|| {
                 E::Cast(
-                    Box::new(c(1)),
+                    Box::new(E::Cast(
+                        Box::new(c(1)),
+                        CastSpec {
+                            to: unpopped_vocab::ElementKind::I32,
+                            round: RoundMode::NearestEven,
+                            sat: Saturation::Wrap,
+                        },
+                    )),
                     CastSpec {
                         to: U32,
                         round: RoundMode::NearestEven,
@@ -447,7 +456,7 @@ fn an_unspellable_fence_exec_id_and_cast_are_typed_declines() {
                     },
                 )
             }) as fn() -> E,
-            "only a wrapping integer cast is",
+            "only a wrapping one is",
         ),
     ] {
         let mut k = reverse(false);
