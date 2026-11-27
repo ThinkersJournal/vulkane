@@ -335,8 +335,10 @@ impl Kc<'_> {
             other => Err(refuse(
                 self.kernel,
                 format!(
-                    "`Stmt::{}` is not lowered (v1: Let, Load, Assign, Store, MaskedLoad, MaskedStore, block/subgroup Barrier, Fence, 32-bit AtomicRmw/AtomicCas, control flow)",
-                    stmt_name(other)
+                    "`Stmt::{}` is not lowered (v1: Let, Load, Assign, Store, MaskedLoad, MaskedStore, block/subgroup Barrier, Fence, 32-bit AtomicRmw/AtomicCas, control flow){}",
+                    stmt_name(other),
+                    vulkane_kernel_text::not_lowered_note(other)
+                        .map_or_else(String::new, |n| format!(": {n}"))
                 ),
             )),
         }

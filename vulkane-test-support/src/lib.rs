@@ -19,6 +19,7 @@ pub mod masked_kernel;
 pub mod narrow_kernel;
 pub mod private_kernel;
 pub mod reverse_kernel;
+pub mod stmt_kernel;
 pub mod subgroup_kernel;
 pub mod vector_kernel;
 pub mod wide_kernel;

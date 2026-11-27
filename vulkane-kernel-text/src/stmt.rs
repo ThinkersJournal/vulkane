@@ -174,8 +174,9 @@ impl W<'_> {
             Stmt::Continue => self.emit("continue;"),
             Stmt::Return => self.emit("return;"),
             other => Err(self.no(format!(
-                "`Stmt::{}` is not lowered (v1: Let, Load, Assign, Store, Barrier, Fence, atomics where the dialect spells them, control flow)",
-                stmt_name(other)
+                "`Stmt::{}` is not lowered (v1: Let, Load, Assign, Store, MaskedLoad, MaskedStore, Barrier, Fence, atomics where the dialect spells them, control flow){}",
+                stmt_name(other),
+                crate::coverage::not_lowered_note(other).map_or_else(String::new, |n| format!(": {n}"))
             ))),
         }
     }
