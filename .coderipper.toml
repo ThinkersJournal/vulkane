@@ -1,27 +1,170 @@
-# Architecture declaration (ROADMAP row 9c). Crate-granular: the workspace has
-# 13 members and one real edge set (`vulkane` -> its three build-time/derive/vocab
-# crates). Module groups inside `vulkane` come with row 9 (the crate::safe cycle).
+# Architecture declaration (ROADMAP row 9c), crate-granular: every declaration below is a fact read from `cargo metadata` (the
+# workspace's real normal and dev edges) and from the sweep's own public-surface counts (MOD-001) at main 274fcd9 / 0.31.2, and each one is
+# CHECKED by the rule that reads it (see the 9c pull request: a deliberate violation each rule catches, and the dispositions of the
+# findings it then reports). Module groups inside `vulkane` come with row 9 (the crate::safe cycle).
 [architecture]
 style = "layered"
+# Inputs this repository genuinely has none of (the rule runs and reports 0 sites by declaration; delete a line the day that stops being true):
+#   owns_data   - no database, shared table, collection or topic: the only data a crate "owns" is its own Rust types.
+#   composition - no executable that wires these crates together: every target is a library, a proc-macro, a test, or a single-crate example
+#                 (`vulkane/examples/*`, `kiss-vulkan-vocab/examples/*`), so there is no composition root to name.
+none = ["owns_data", "composition"]
 
+# Components. Roles are by what the crate DOES: `policy` = the target-neutral lowering walker; `adapter` = per-target spelling or per-format
+# parsing; `infrastructure` = FFI to the Vulkan loader, the build-time generator and the proc-macro; `test-support` = never published.
+# Volatility is by what makes the crate change: `volatile` follows a specification or a target (Vulkan, Slang, SPIR-V, HLSL, WGSL, MSL,
+# GLSL, the KISS vocabulary); `stable` changes only when the IR contract does.
+[[architecture.component]]
+name       = "vulkane-kernel-text"
+paths      = ["vulkane-kernel-text"]
+role       = "policy"
+volatility = "stable"
+pure       = true   # lowers a kernel to text: no file, network, environment, process, clock, randomness or thread effect (EFX-001 reads this)
+
+[[architecture.component]]
+name       = "vulkane-glsl-emit"
+paths      = ["vulkane-glsl-emit"]
+role       = "adapter"
+volatility = "volatile"
+
+[[architecture.component]]
+name       = "vulkane-hlsl-emit"
+paths      = ["vulkane-hlsl-emit"]
+role       = "adapter"
+volatility = "volatile"
+
+[[architecture.component]]
+name       = "vulkane-msl-emit"
+paths      = ["vulkane-msl-emit"]
+role       = "adapter"
+volatility = "volatile"
+
+[[architecture.component]]
+name       = "vulkane-spirv-emit"
+paths      = ["vulkane-spirv-emit"]
+role       = "adapter"
+volatility = "volatile"
+
+[[architecture.component]]
+name       = "vulkane-wgsl-emit"
+paths      = ["vulkane-wgsl-emit"]
+role       = "adapter"
+volatility = "volatile"
+
+[[architecture.component]]
+name       = "vulkane-slang-emit"
+paths      = ["vulkane-slang-emit"]
+role       = "adapter"
+volatility = "volatile"
+
+[[architecture.component]]
+name       = "vulkane-hlsl-parse"
+paths      = ["vulkane-hlsl-parse"]
+role       = "adapter"
+volatility = "volatile"
+
+[[architecture.component]]
+name       = "vulkane-spirv-parse"
+paths      = ["vulkane-spirv-parse"]
+role       = "adapter"
+volatility = "volatile"
+
+[[architecture.component]]
+name       = "vulkane-slang-parse"
+paths      = ["vulkane-slang-parse"]
+role       = "adapter"
+volatility = "volatile"
+
+[[architecture.component]]
+name       = "vulkane-wgsl-parse"
+paths      = ["vulkane-wgsl-parse"]
+role       = "adapter"
+volatility = "volatile"
+
+[[architecture.component]]
+name       = "vulkane"
+paths      = ["vulkane"]
+role       = "infrastructure"
+volatility = "volatile"
+
+[[architecture.component]]
+name       = "vulkan_gen"
+paths      = ["vulkan_gen"]
+role       = "infrastructure"
+volatility = "volatile"
+
+[[architecture.component]]
+name       = "vulkane_derive"
+paths      = ["vulkane_derive"]
+role       = "infrastructure"
+volatility = "stable"
+
+[[architecture.component]]
+name       = "vulkane-kernels-source"
+paths      = ["vulkane-kernels-source"]
+role       = "infrastructure"
+volatility = "volatile"
+
+[[architecture.component]]
+name       = "kiss-vulkan-vocab"
+paths      = ["kiss-vulkan-vocab"]
+role       = "infrastructure"
+volatility = "volatile"
+
+[[architecture.component]]
+name       = "vulkane-test-support"
+paths      = ["vulkane-test-support"]
+role       = "test-support"
+volatility = "stable"
+
+# Direction, bottom to top: a component may depend on its own layer or any layer BELOW it. This is the real graph (cargo metadata): the five
+# emit crates and the Slang re-export depend on `vulkane-kernel-text`; `vulkane` depends on `kiss-vulkan-vocab` and `vulkane_derive`;
+# `vulkane-test-support` depends on `vulkane` and `vulkane-spirv-emit`.
 [[architecture.layer]]
-name       = "leaf-crates"
+name       = "foundation"
 components = [
-  "kiss-vulkan-vocab", "vulkan_gen", "vulkane_derive",
-  "vulkane-kernels-source",
+  "kiss-vulkan-vocab", "vulkan_gen", "vulkane_derive", "vulkane-kernels-source", "vulkane-kernel-text",
   "vulkane-hlsl-parse", "vulkane-spirv-parse", "vulkane-slang-parse", "vulkane-wgsl-parse",
-  "vulkane-hlsl-emit", "vulkane-spirv-emit", "vulkane-slang-emit", "vulkane-wgsl-emit",
-  "vulkane-glsl-emit", "vulkane-msl-emit", "vulkane-kernel-text",
 ]
 
 [[architecture.layer]]
-name       = "runtime"
-components = ["vulkane"]
+name       = "emitters-and-runtime"
+components = [
+  "vulkane", "vulkane-glsl-emit", "vulkane-hlsl-emit", "vulkane-msl-emit", "vulkane-spirv-emit",
+  "vulkane-wgsl-emit", "vulkane-slang-emit",
+]
 
 # Test-only, never published; it depends on `vulkane` and an emitter, and they take it back as a dev-dependency.
 [[architecture.layer]]
 name       = "test-support"
 components = ["vulkane-test-support"]
+
+# Volatile details (ARC-003, ARC-004): names whose use inside a stable policy component (`vulkane-kernel-text`) is a violation. They are the
+# generated Vulkan bindings and the runtime that wraps them: the shared walker must stay target-neutral.
+[architecture.volatile]
+namespaces = ["vulkane::", "vulkan_gen::", "ash::"]
+
+# Public-surface budgets (ARC-006): the count the sweep's MOD-001 reads TODAY, items plus their members (ARC-006 counts both: `vulkane` offers
+# 204 items and 1024 members), so a crate's surface can only grow by a deliberate edit of this line. A ratchet at the measured size, not a
+# design claim about the right size.
+[architecture.api_budget]
+kiss-vulkan-vocab = 93
+vulkan_gen = 451
+vulkane = 1228
+vulkane-glsl-emit = 1
+vulkane-hlsl-emit = 3
+vulkane-hlsl-parse = 3
+vulkane-kernel-text = 89
+vulkane-kernels-source = 0
+vulkane-msl-emit = 1
+vulkane-slang-emit = 1
+vulkane-slang-parse = 1
+vulkane-spirv-emit = 21
+vulkane-spirv-parse = 20
+vulkane-test-support = 195
+vulkane-wgsl-emit = 1
+vulkane-wgsl-parse = 24
+vulkane_derive = 1
 
 # Per-file SPDX/licence gate (SUP-016, licence-tools#6). `copyright_expected` names files
 # that legitimately carry a third party's copyright instead of ours; none is waived:
