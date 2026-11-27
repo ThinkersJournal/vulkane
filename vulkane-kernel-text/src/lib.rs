@@ -9,7 +9,8 @@
 //! ## What it lowers (v1)
 //!
 //! Integer kernels (`I32`/`U32`): buffer parameters, static `Shared` arrays, locals, `Let`, `Load`,
-//! `Assign`, `Store`, `Barrier` and `Fence`, `If`, `For`, `While`, `Break`, `Continue`, `Return`, and
+//! `Assign`, `Store`, `MaskedLoad` and `MaskedStore` (ROADMAP 9e: a guarded plain access, so the memory is not touched
+//! where the mask is false), `Barrier` and `Fence`, `If`, `For`, `While`, `Break`, `Continue`, `Return`, and
 //! the expressions `Local`, `ConstInt`, `Exec` (thread, block, `BlockDim`, `GridDim`), `Add`, `Sub`,
 //! `Mul`, the comparisons, `BitAnd`/`BitOr`/`BitXor`, `Shl`/`Shr` (the count masked to the width, as
 //! the SPIR-V emitter does) and `Select`. Anything else is a typed

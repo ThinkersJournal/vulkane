@@ -70,6 +70,7 @@ mod command;
 mod debug;
 mod descriptor;
 pub(crate) mod device;
+pub(crate) mod device_inner;
 mod extensions;
 mod external_memory;
 mod external_semaphore;

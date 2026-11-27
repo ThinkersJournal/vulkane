@@ -45,7 +45,7 @@
 //! feature on the device and use acceleration structures directly from
 //! your compute pipeline.
 
-use super::device::DeviceInner;
+use super::device_inner::DeviceInner;
 use super::pipeline::PipelineLayout;
 use super::shader::ShaderModule;
 use super::{Device, Error, Result, check};

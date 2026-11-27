@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Safe wrapper for `VkShaderModule`.
 
-use super::device::DeviceInner;
+use super::device_inner::DeviceInner;
 use super::{Device, Error, Result, check};
 use crate::raw::bindings::*;
 use std::sync::Arc;

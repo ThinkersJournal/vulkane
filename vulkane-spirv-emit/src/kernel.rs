@@ -54,7 +54,7 @@ use rspirv::spirv::{
 use unpopped::backend::{Decline, DeclinedOp, GeneratedKernel, LowerError, Spelling};
 use unpopped::exec::{ExecId, MemorySpace, Scope};
 use unpopped::ir::ScalarExpr;
-use unpopped::kernel::{BarrierKind, KernelFn, MemoryOrder, Place, Stmt};
+use unpopped::kernel::{BarrierKind, Block, KernelFn, MemoryOrder, Place, Stmt};
 use unpopped::types::Ty;
 
 use crate::family::Family;
@@ -323,6 +323,7 @@ impl Kc<'_> {
             Stmt::Let { .. } | Stmt::Assign { .. } | Stmt::Load { .. } | Stmt::Store { .. } => {
                 self.data(s)
             }
+            Stmt::MaskedLoad { .. } | Stmt::MaskedStore { .. } => self.masked(s),
             Stmt::Barrier { .. } | Stmt::Fence { .. } => self.sync(s),
             Stmt::AtomicRmw { .. } | Stmt::AtomicCas { .. } => self.atomic(s),
             Stmt::If { .. }
@@ -334,7 +335,7 @@ impl Kc<'_> {
             other => Err(refuse(
                 self.kernel,
                 format!(
-                    "`Stmt::{}` is not lowered (v1: Let, Load, Assign, Store, block/subgroup Barrier, Fence, 32-bit AtomicRmw/AtomicCas, control flow)",
+                    "`Stmt::{}` is not lowered (v1: Let, Load, Assign, Store, MaskedLoad, MaskedStore, block/subgroup Barrier, Fence, 32-bit AtomicRmw/AtomicCas, control flow)",
                     stmt_name(other)
                 ),
             )),
@@ -351,6 +352,40 @@ impl Kc<'_> {
             Stmt::Store { place, value } => self.store_stmt(place, value),
             _ => unreachable!("`stmt` routes only data statements here"),
         }
+    }
+
+    /// Predicated access (ROADMAP 9e) as the structured `If` it means: the access sits in the taken arm only, so the
+    /// memory is not touched where the mask is false (no bounds check, no race record). A `OpSelect` of a load would
+    /// still execute it.
+    fn masked(&self, s: &Stmt) -> Result<(), LowerError> {
+        let (mask, then, els) = match s {
+            Stmt::MaskedLoad {
+                local,
+                place,
+                mask,
+                fill,
+            } => (
+                mask,
+                Block(vec![Stmt::Load {
+                    local: *local,
+                    place: place.clone(),
+                }]),
+                Block(vec![Stmt::Assign {
+                    local: *local,
+                    value: fill.clone(),
+                }]),
+            ),
+            Stmt::MaskedStore { place, value, mask } => (
+                mask,
+                Block(vec![Stmt::Store {
+                    place: place.clone(),
+                    value: value.clone(),
+                }]),
+                Block(vec![]),
+            ),
+            _ => unreachable!("`stmt` routes only masked statements here"),
+        };
+        self.lower_if(mask, &then, &els)
     }
 
     fn assign(&self, local: u32, value: &ScalarExpr) -> Result<(), LowerError> {

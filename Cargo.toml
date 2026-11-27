@@ -15,6 +15,7 @@
     "vulkane-wgsl-emit",
     "vulkane-kernel-text",
     "vulkane-glsl-emit",
+    "vulkane-msl-emit",
     "vulkane-test-support",
   ]
   resolver = "2"
