@@ -103,7 +103,7 @@ jobs:
           rc=${PIPESTATUS[0]}
           {
             echo "### Device oracle check (a paravirtual device, not physical Apple hardware)"
-            echo '```'; grep -E 'DEVICE|test result|panicked' "$RUNNER_TEMP/check.log"; echo '```'
+            echo '```'; grep -E 'DEVICE|MEASURED|test result|panicked' "$RUNNER_TEMP/check.log"; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit $rc
       - name: Probe - function constant as a threadgroup array extent (records, never fails)
