@@ -124,6 +124,15 @@ pub(super) fn check_allocs(kernel: &KernelFn, fam: Family) -> Result<(), LowerEr
                     ),
                 ));
             }
+            (MemorySpace::Tile, _) => {
+                return Err(refuse(
+                    kernel,
+                    format!(
+                        "allocation `{}` is in the Tile space (unpopped 0.62), which is declined by name until the tile statements are lowered (ROADMAP row 8j)",
+                        a.name
+                    ),
+                ));
+            }
             (MemorySpace::Shared, Extent::Param(l))
                 if Family::of(a.elem) == Some(fam) && extent_param(kernel, l, fam).is_some() => {}
             (MemorySpace::Shared, Extent::Param(l)) => {

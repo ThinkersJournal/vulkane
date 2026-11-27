@@ -55,3 +55,33 @@ fn a_byte_addressed_place_is_refused_by_name_not_lowered_to_a_wrong_address() {
         }
     }
 }
+
+/// The tile statements and the `Tile` space of unpopped 0.62: a checker-valid kernel with a tile allocation is refused BY NAME by the
+/// emitter's own gate (the allocation arm), not by the checker and not by the generic "not a shared array" text.
+#[test]
+fn the_tile_statements_and_a_tile_space_are_refused_by_name() {
+    for name in ["TileLoad", "TileMma", "TileFill", "TileStore"] {
+        let unpopped::fixtures::Fixture::Kernel(k) =
+            unpopped::fixtures::fixture(name).expect("a fixture of unpopped 0.62")
+        else {
+            panic!("{name}: a kernel fixture");
+        };
+        unpopped::kernel::check_kernel(&k)
+            .unwrap_or_else(|e| panic!("{name}: the fixture must be checker-valid: {e:?}"));
+        match SpirV.lower_kernel(&k) {
+            Err(
+                unpopped::backend::LowerError::UnsupportedKernel { detail }
+                | unpopped::backend::LowerError::UnsupportedOp { detail }
+                | unpopped::backend::LowerError::UnsupportedDtype { detail, .. },
+            ) => {
+                assert!(
+                    detail.contains("Tile")
+                        && !detail.contains("check_kernel refused")
+                        && !detail.contains("checker refuses"),
+                    "{name}: the emitter's own refusal must name the Tile space: {detail}"
+                );
+            }
+            other => panic!("{name}: wanted a typed refusal, got {other:?}"),
+        }
+    }
+}

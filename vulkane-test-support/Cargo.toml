@@ -10,8 +10,8 @@ repository   = "https://github.com/ThinkersJournal/vulkane"
 publish      = false
 
 [dependencies]
-unpopped           = "~0.61.0"
-unpopped-vocab     = "~0.61.0"
+unpopped           = "~0.62.0"
+unpopped-vocab     = "~0.62.0"
 tempfile           = { workspace = true }
 # A dev-dependency cycle on purpose: these crates' tests depend on this one, and it needs them for the
 # device harness (`gpu`) and the live-device helpers (`common`). Cargo allows it; this crate is never published.

@@ -14,13 +14,13 @@ readme       = "README.md"
 include      = ["src/**", "README.md", "LICENSE-*"]
 
 [dependencies]
-unpopped       = "~0.61.0"
-unpopped-vocab = "~0.61.0"
+unpopped       = "~0.62.0"
+unpopped-vocab = "~0.62.0"
 vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.31" }
 
 [dev-dependencies]
 # The published decline fixtures (ROADMAP 9h): the checker's divergent-placement refusals for the subgroup collectives.
-unpopped = { version = "~0.61.0", features = ["fixtures"] }
+unpopped = { version = "~0.62.0", features = ["fixtures"] }
 # The shared kernels (reverse, flow, grid, ...) the other emitters' tests lower too.
 vulkane-test-support = { path = "../vulkane-test-support" }
 
