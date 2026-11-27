@@ -16,10 +16,11 @@
 use std::fmt::Write;
 
 use unpopped::exec::{ExecId, Scope};
+use unpopped::ir::ReduceOp;
 use unpopped::ir::{BinaryOp, RoundMode, UnaryOp};
-use unpopped::kernel::{BufferRole, MemoryOrder};
+use unpopped::kernel::{BufferRole, CollectiveKind, MemoryOrder};
 use unpopped_vocab::ElementKind;
-use vulkane_kernel_text::{BIT_OPS, COMPARISONS, Dialect, Layout, operator};
+use vulkane_kernel_text::{BIT_OPS, COMPARISONS, Dialect, Layout, SubgroupCollective, operator};
 
 use crate::dialect::{Ids, barrier, fence};
 
@@ -76,6 +77,37 @@ fn bfloat_unary(op: UnaryOp, x: &str) -> Option<String> {
     })
 }
 
+/// The MSL expression of one float subgroup reduction (board 506 A; pm-kernels ruling 2026-11-27: Sum first, then Max and Min with an
+/// explicit NaN select), or the reason it is declined by name.
+///
+/// MEASURED on the hosted macOS paravirtual device, NOT Apple hardware, under `math_mode(safe)` (vulkane#189, run 45972534688);
+/// fast-math was NOT measured and a kernel compiled with it may differ. `simd_sum` propagated NaN. `simd_max` and `simd_min`
+/// IGNORED a NaN operand, and KISS-OPS-6.11-0002 requires a float reduce(max|min) to propagate it, so each is wrapped with a NaN
+/// indicator via a Sum reduction because `simd_max`/`simd_min` ignore NaN:
+/// `select(simd_max(v), NAN, simd_sum(isnan(v) ? 1.0f : 0.0f) > 0.0f)` (`select` is a function, so both operands are evaluated and the
+/// collectives stay under uniform control). The indicator count is exact while the lane count is below 2^24 (a float holds every
+/// integer up to 2^24); the hosted device reports a SIMD-group width of 32, and the MSL text read states no maximum width, so the bound is
+/// the float's, not the specification's. The +-0 bits of a float max or min are NOT pinned by KISS (unpinned; kiss options note pending): nothing is
+/// claimed about them. A float sum's order is unpinned too (KISS-OPS-6.0-0004: class order-invariant/nondeterministic, compared
+/// under a tolerance; the clause states no numeric bound). `Prod`, `Mean`, shuffles, votes, broadcasts, half and bfloat stay declined
+/// (unmeasured or outside the ruling). Lifted by CireSnave 2026-11-26 (board 506 A) as his risk call; "outside as read" is a reading of
+/// public documents, not a clearance; no attorney; findings, not advice.
+fn spell_float_collective(c: &SubgroupCollective<'_>) -> Result<String, String> {
+    let v = &c.value;
+    match c.kind {
+        CollectiveKind::Reduce(ReduceOp::Sum) => Ok(format!("simd_sum({v})")),
+        CollectiveKind::Reduce(ReduceOp::Max) => Ok(format!(
+            "select(simd_max({v}), NAN, simd_sum(isnan({v}) ? 1.0f : 0.0f) > 0.0f)"
+        )),
+        CollectiveKind::Reduce(ReduceOp::Min) => Ok(format!(
+            "select(simd_min({v}), NAN, simd_sum(isnan({v}) ? 1.0f : 0.0f) > 0.0f)"
+        )),
+        other => Err(format!(
+            "the float subgroup collective {other:?} is declined: only Sum, Max and Min of an F32 kernel are lowered (Prod, Mean, shuffles, votes, broadcasts and half or bfloat are unmeasured or outside the board 506 A ruling)"
+        )),
+    }
+}
+
 impl Dialect for MslFloat {
     fn name(&self) -> &'static str {
         "msl"
@@ -83,6 +115,15 @@ impl Dialect for MslFloat {
 
     fn float(&self) -> bool {
         true
+    }
+
+    fn subgroup_collectives(&self) -> bool {
+        // F32 only: half and bfloat reductions are unmeasured (board 506 A float ruling, pm-kernels 2026-11-27).
+        !self.half && !self.bf16
+    }
+
+    fn subgroup_collective(&self, c: &SubgroupCollective<'_>) -> Result<String, String> {
+        spell_float_collective(c)
     }
 
     fn half(&self) -> bool {
