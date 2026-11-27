@@ -1,6 +1,6 @@
 [package]
 name = "vulkan_gen"
-version = "0.31.2"
+version = "0.31.4"
 edition = "2024"
 # 1.88 for let-chains. Checked, not asserted: the msrv-minimality job
 # requires this crate to FAIL to compile on 1.87, so a floor that stops
