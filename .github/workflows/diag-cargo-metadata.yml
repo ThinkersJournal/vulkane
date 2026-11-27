@@ -6,6 +6,10 @@ on:
   pull_request:
 permissions:
   contents: read
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  GPU_RUN_UNGUARDED: "CI runner: ephemeral and single-tenant, no shared GPU to serialize against"
 jobs:
   diag:
     runs-on: ubuntu-latest
@@ -19,25 +23,6 @@ jobs:
           pinned="$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)"
           rustup toolchain install "$pinned" --profile minimal
           cargo "+$pinned" --version
-      - name: cargo metadata, stderr visible
-        shell: bash
-        run: |
-          set +e
-          echo "first plain cargo after the +pinned probe (as in the self-test job):"
-          RUST_BACKTRACE=1 cargo metadata --no-deps --format-version 1 > /tmp/meta.json 2> /tmp/meta.err
-          echo "exit=$?"
-          echo "--- stderr:"
-          cat /tmp/meta.err
-          echo "--- stdout bytes: $(wc -c < /tmp/meta.json)"
-          exit 0
-      - name: the same through msrv_matrix.py (as the harness runs it)
-        shell: bash
-        run: |
-          set +e
-          python3 .github/msrv_matrix.py > /tmp/m.out 2> /tmp/m.err
-          echo "msrv_matrix exit=$?"
-          cat /tmp/m.err | head -20
-          exit 0
       - name: the WHOLE self-test, with a cargo shim that records every failing call's stderr
         shell: bash
         run: |
