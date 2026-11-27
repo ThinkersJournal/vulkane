@@ -7,7 +7,11 @@
 //! walk visits every name, so a name dropped from the table fails here.
 //!
 //! Every kind of `Stmt::Collective` is pinned separately (ROADMAP 8c, 8o): Metal has a SIMD-group function for most of
-//! them (MSL 4.1 6.10.2), and none may be lowered.
+//! them (MSL 4.1 6.10.2). **Board 506 "A" (narrowed; CireSnave 2026-11-26) lifted the subgroup-scope reductions, shuffles, votes and
+//! broadcasts** (`vulkane_kernel_text::collective_is_ruled`): those are lowered and pinned in `tests/subgroup_collectives.rs`; here, scans, user
+//! combines and every block-scope collective stay refused by name with the 434 C marker, and the ruled kinds are asserted NOT refused by name.
+//! Lifted by CireSnave 2026-11-26 (board 506 A) as his risk call: "outside as read" is a reading of public documents, not a clearance; no
+//! attorney; findings, not advice.
 
 use unpopped::backend::{Backend, LowerError};
 use unpopped::exec::{AllocDecl, Extent, LaunchShape, MemorySpace, Scope};
@@ -92,7 +96,11 @@ fn declined_434c() -> Vec<Case> {
             "Collective",
             MARKER_434C,
             Stmt::Collective {
-                kind: CollectiveKind::Reduce(ReduceOp::Sum),
+                // A scan: board 506 A lifted the reductions, shuffles, votes and broadcasts, not the scans.
+                kind: CollectiveKind::Scan {
+                    op: ReduceOp::Sum,
+                    exclusive: false,
+                },
                 value: u32c(1),
                 result: 0,
                 scope: Scope::Subgroup,
@@ -308,8 +316,11 @@ fn every_collective_kind() -> Vec<(&'static str, CollectiveKind)> {
 }
 
 #[test]
-fn every_kind_of_collective_is_refused_by_name_whatever_msl_function_would_spell_it() {
+fn only_the_kinds_outside_the_ruled_set_are_refused_by_name_whatever_msl_function_would_spell_them()
+{
+    let (mut ruled_n, mut declined_n) = (0, 0);
     for (msl_fn, kind) in every_collective_kind() {
+        let ruled = vulkane_kernel_text::collective_is_ruled(&kind, Scope::Subgroup);
         let stmt = Stmt::Collective {
             kind: kind.clone(),
             value: u32c(1),
@@ -317,11 +328,49 @@ fn every_kind_of_collective_is_refused_by_name_whatever_msl_function_would_spell
             scope: Scope::Subgroup,
         };
         for (shape, wrap) in shapes() {
-            let detail = refusal(wrap(stmt.clone()));
-            assert!(
-                detail.contains("Stmt::Collective") && detail.contains(MARKER_434C),
-                "{kind:?} (MSL {msl_fn}) at {shape}: {detail}"
-            );
+            let result = Msl.lower_kernel(&kernel(wrap(stmt.clone())));
+            if ruled {
+                // Lowered, or refused for some OTHER reason of this probe kernel (no launch subgroup size, no locals): never by name.
+                if let Err(LowerError::UnsupportedKernel { detail }) = &result {
+                    assert!(
+                        !detail.contains(MARKER_434C),
+                        "{kind:?} (MSL {msl_fn}) at {shape} is in the ruled set and must not be refused by name: {detail}"
+                    );
+                }
+            } else {
+                let Err(LowerError::UnsupportedKernel { detail }) = result else {
+                    panic!("{kind:?} (MSL {msl_fn}) at {shape} must be refused");
+                };
+                assert!(
+                    detail.contains("Stmt::Collective") && detail.contains(MARKER_434C),
+                    "{kind:?} (MSL {msl_fn}) at {shape}: {detail}"
+                );
+            }
         }
+        if ruled {
+            ruled_n += 1;
+        } else {
+            declined_n += 1;
+        }
+    }
+    // The table is complete: 15 ruled kinds (7 reductions, 4 shuffles, 3 votes, 1 broadcast) and 4 that stay declined (2 scans, 2 combines).
+    assert_eq!((ruled_n, declined_n), (15, 4));
+}
+
+#[test]
+fn a_ruled_kind_over_a_block_is_refused_by_name() {
+    // Board 506 A lifted SUBGROUP scope only: every block-scope collective stays declined, whatever the kind.
+    for (msl_fn, kind) in every_collective_kind() {
+        let stmt = Stmt::Collective {
+            kind: kind.clone(),
+            value: u32c(1),
+            result: 0,
+            scope: Scope::Block,
+        };
+        let detail = refusal(vec![stmt]);
+        assert!(
+            detail.contains("Stmt::Collective") && detail.contains(MARKER_434C),
+            "{kind:?} (MSL {msl_fn}) over a Block: {detail}"
+        );
     }
 }
