@@ -48,7 +48,7 @@ LICENCE = "MIT OR Apache-2.0"
 # the GLSL spec: all nine ALREADY opened with a `//` comment line before this
 # gate existed, and they compile in the `shaderc` and naga jobs today.
 EXTENSIONS = (".rs", ".py", ".wgsl", ".comp", ".vert", ".frag", ".glsl",
-              ".slang", ".hlsl", ".sh")
+              ".slang", ".hlsl", ".sh", ".metal", ".swift")
 
 #: How far into a file the header may sit. Measured, not guessed: across 2,100
 #: real .rs files in this portfolio (fuel, kiss-ref, lightbulb, synapse), 851
