@@ -434,9 +434,8 @@ fn every_probe_kernel_passes_the_kernel_checker() {
             kind,
             CollectiveKind::ReduceWith { .. } | CollectiveKind::ScanWith { .. }
         );
-        // The checker itself refuses a product fold (outside Sum, Max, Min and the integer bit ops): no checker-valid
-        // kernel holds it, so for it the by-name table is the only thing that can name the statement.
-        let product = matches!(kind, CollectiveKind::Reduce(ReduceOp::Prod));
+        // (unpopped before 0.60 refused a product fold in the checker, so it needed its own arm here; the checker at the taken
+        // 0.60.26 accepts it, and board 506 A lowers it, so a product is checked like every other kind.)
         let stmt = Stmt::Collective {
             kind: kind.clone(),
             value: u32c(1),
@@ -447,11 +446,6 @@ fn every_probe_kernel_passes_the_kernel_checker() {
             let checked = unpopped::kernel::check_kernel(&kernel(wrap(stmt.clone())));
             if user_combine {
                 assert!(module_only(&checked), "{kind:?} at {shape}: {checked:?}");
-            } else if product {
-                assert!(
-                    format!("{checked:?}").contains("collective fold"),
-                    "{kind:?} at {shape}: {checked:?}"
-                );
             } else {
                 assert!(
                     checked.is_ok(),
