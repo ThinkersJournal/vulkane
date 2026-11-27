@@ -254,16 +254,120 @@ fn ballot_is_declined_until_the_simd_vote_conversion_is_measured() {
     );
 }
 
-#[test]
-fn a_float_kernel_still_refuses_every_collective_by_name() {
-    // The float dialect does not say `subgroup_collectives()`: the reduction order and NaN rules of the float functions are not
-    // stated by the specification text read, so floats are a later row, and the walker's by-name decline still applies.
+/// A float kernel (F32) with `kind` over one subgroup of 32.
+fn float_kernel(kind: CollectiveKind) -> KernelFn {
     let f = ElementKind::F32;
+    kernel_with(f, kind, Scope::Subgroup, f, Some((32, 32)))
+}
+
+#[test]
+fn an_f32_kernel_lowers_sum_max_and_min_with_the_nan_select_on_max_and_min() {
+    // Board 506 A float ruling (pm-kernels 2026-11-27). MEASURED on the hosted macOS paravirtual device, NOT Apple hardware, in safe
+    // math (vulkane#189, run 45972534688; fast-math not measured): `simd_sum` propagated NaN, `simd_max` and `simd_min` IGNORED it,
+    // and KISS-OPS-6.11-0002 requires a float max or min to propagate NaN, so each carries an explicit select.
+    let sum = source(&float_kernel(CollectiveKind::Reduce(ReduceOp::Sum)));
+    assert!(sum.contains("l1 = simd_sum(l0);"), "{sum}");
+    assert!(sum.contains("#pragma METAL fp math_mode(safe)"), "{sum}");
+    for (op, f) in [(ReduceOp::Max, "simd_max"), (ReduceOp::Min, "simd_min")] {
+        let s = source(&float_kernel(CollectiveKind::Reduce(op)));
+        let want = format!("l1 = select({f}(l0), NAN, simd_any(isnan(l0)));");
+        assert!(
+            s.contains(&want),
+            "{op:?}: expected `{want}` in:
+{s}"
+        );
+    }
+}
+
+#[test]
+fn an_f32_kernel_declines_everything_outside_the_float_ruling_by_name() {
+    use CollectiveKind as C;
+    // Prod is unmeasured (simd_product was not probed); the shuffles, votes and broadcast are outside the ruling: each is a typed
+    // refusal from the float dialect that says so (no 434 C marker: these are not patent-declined kinds).
+    let mut dialect_declined: Vec<(String, CollectiveKind)> = vec![
+        ("Reduce Prod".into(), C::Reduce(ReduceOp::Prod)),
+        ("Vote All".into(), C::Vote(VoteKind::All)),
+        ("Broadcast".into(), C::Broadcast { lane: c(3, U) }),
+    ];
+    for mode in [
+        ShuffleMode::Idx,
+        ShuffleMode::Up,
+        ShuffleMode::Down,
+        ShuffleMode::Xor,
+    ] {
+        dialect_declined.push((
+            format!("Shuffle {mode:?}"),
+            C::Shuffle {
+                mode,
+                operand: c(1, U),
+            },
+        ));
+    }
+    for (label, kind) in &dialect_declined {
+        let result_ty = if matches!(kind, C::Vote(_)) {
+            U
+        } else {
+            ElementKind::F32
+        };
+        let mut k = kernel_with(
+            ElementKind::F32,
+            kind.clone(),
+            Scope::Subgroup,
+            result_ty,
+            Some((32, 32)),
+        );
+        if matches!(kind, C::Vote(_)) {
+            // A vote's result is a U32 local, which cannot be stored to the F32 buffer: store the loaded value instead, so the kernel
+            // is checker-valid and the refusal under test is the dialect's.
+            if let Some(Stmt::Store { value, .. }) = k.body.0.last_mut() {
+                *value = ScalarExpr::Local(0);
+            }
+        }
+        check_kernel(&k)
+            .unwrap_or_else(|e| panic!("{label}: the probe kernel must be checker-valid: {e:?}"));
+        let why = refusal(&k);
+        assert!(
+            why.contains("only Sum, Max and Min of an F32 kernel are lowered"),
+            "{label}: {why}"
+        );
+    }
+    // Scans, Mean and a user combine are not in the ruled set at all: the walker's by-name decline with the 434 C marker.
+    for kind in [
+        C::Reduce(ReduceOp::Mean),
+        C::Scan {
+            op: ReduceOp::Sum,
+            exclusive: false,
+        },
+        C::ReduceWith { combine: 0 },
+    ] {
+        let why = refusal(&float_kernel(kind.clone()));
+        assert!(
+            why.contains("Stmt::Collective") && why.contains(MARKER_434C),
+            "{kind:?}: {why}"
+        );
+    }
+    // Half and bfloat kernels: the float dialect does not lift the subgroup collectives for them (unmeasured), so the by-name decline
+    // applies even to a Sum.
+    for t in [ElementKind::F16, ElementKind::Bf16] {
+        let k = kernel_with(
+            t,
+            CollectiveKind::Reduce(ReduceOp::Sum),
+            Scope::Subgroup,
+            t,
+            Some((32, 32)),
+        );
+        let why = refusal(&k);
+        assert!(
+            why.contains("Stmt::Collective") && why.contains(MARKER_434C),
+            "{t:?}: {why}"
+        );
+    }
+    // Block scope stays declined for a float kernel too.
     let k = kernel_with(
-        f,
+        ElementKind::F32,
         CollectiveKind::Reduce(ReduceOp::Sum),
-        Scope::Subgroup,
-        f,
+        Scope::Block,
+        ElementKind::F32,
         Some((32, 32)),
     );
     let why = refusal(&k);
