@@ -54,12 +54,20 @@ pub fn coverage(stmt: &Stmt) -> Coverage {
         | Stmt::MbarWait { .. }
         | Stmt::CopyBulk { .. }
         | Stmt::Tcgen05Commit { .. }
-        | Stmt::WgmmaWait { .. } => Coverage::Patent,
+        | Stmt::WgmmaWait { .. }
+        | Stmt::CopyUnpack { .. } => Coverage::Patent,
         Stmt::Wgmma { .. } | Stmt::WgmmaCommit => Coverage::Nvidia(
             "a warpgroup-level asynchronous matrix multiply-accumulate (PTX `wgmma`, Hopper); none of SPIR-V, GLSL, HLSL, WGSL or MSL has a construct with its asynchronous warpgroup semantics",
         ),
-        Stmt::Tcgen05Mma { .. } | Stmt::Tcgen05Ld { .. } => Coverage::Nvidia(
+        Stmt::Tcgen05Mma { .. }
+        | Stmt::Tcgen05Ld { .. }
+        | Stmt::Tcgen05Alloc { .. }
+        | Stmt::Tcgen05Dealloc { .. }
+        | Stmt::Tcgen05RelinquishPermit => Coverage::Nvidia(
             "a fifth-generation tensor-core operation on tensor memory (PTX `tcgen05`, Blackwell); no target language of this repository has tensor memory",
+        ),
+        Stmt::ProxyFence { .. } => Coverage::Nvidia(
+            "an async-proxy fence (PTX `fence.proxy.async`, as unpopped documents `ProxyFence`): it orders generic-proxy writes against the asynchronous proxy that `CopyBulk` and `wgmma` use; no target language of this repository has memory proxies",
         ),
         Stmt::GridDepWait | Stmt::GridDepLaunchDependents => Coverage::Nvidia(
             "CUDA programmatic dependent launch (a kernel waiting on, or releasing, the next kernel of a stream); a Vulkan dispatch has no in-kernel dependency on another dispatch",
