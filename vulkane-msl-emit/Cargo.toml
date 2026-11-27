@@ -1,6 +1,6 @@
 [package]
 name         = "vulkane-msl-emit"
-version      = "0.25.5"
+version      = "0.29.0"
 edition      = "2024"
 rust-version = "1.85"
 authors      = ["Eric Evans <CireSnave@gmail.com>"]
@@ -14,9 +14,9 @@ readme       = "README.md"
 include      = ["src/**", "README.md", "LICENSE-*"]
 
 [dependencies]
-unpopped       = "~0.56.2"
-unpopped-vocab = "~0.56.2"
-vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.25" }
+unpopped       = "~0.60.1"
+unpopped-vocab = "~0.60.1"
+vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.29" }
 
 [dev-dependencies]
 # The shared kernels (reverse, flow, grid, ...) the other emitters' tests lower too.
