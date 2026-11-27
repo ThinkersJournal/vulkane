@@ -527,7 +527,103 @@ kernel void au_minmax(
             }
             Ok(())
         }),
-    }]
+    },
+    float_collective_measure()]
+}
+
+/// The scenarios of the float-collective MEASURE-ONLY probe: per lane `l` of one 32-lane subgroup, the bit pattern each of
+/// `simd_sum`, `simd_max` and `simd_min` is given. Scenario 0 is the harness control (all ones: sum 32, max 1, min 1). The rest
+/// ask what the device does with NaN (first, middle, last lane), infinities, signed zeros (which one is returned when both occur,
+/// and does the position matter) and a sum whose result depends on the order of addition.
+const FLOAT_SCENARIOS: [&str; 12] = [
+    "all 1.0 (control)",
+    "lane 7 NaN, others lane+1",
+    "lane 0 NaN, others 5.0",
+    "lane 31 NaN, others 5.0",
+    "lane 3 +inf, lane 9 -inf, others 1.0",
+    "lane 3 +inf, others 1.0",
+    "all -0.0 except lane 5 = +0.0",
+    "all +0.0 except lane 5 = -0.0",
+    "all -0.0",
+    "lane 0 = +0.0, lane 1 = -0.0, others -inf (max/min of zeros)",
+    "lane 0 = 1e8, lane 1 = -1e8, others 1.0 (order of addition)",
+    "lane 0 = -1e8, lane 1 = 1e8, others 1.0 (order of addition, swapped)",
+];
+
+/// Float subgroup collectives on the device, MEASURE ONLY (pm-kernels 2026-11-27: no lowering until the NaN, infinity and
+/// signed-zero behaviour of `simd_sum`, `simd_max` and `simd_min` is measured and KISS states a rule for a float reduction). Not emitted:
+/// hand-written with `math_mode(safe)` as the float emitter writes. The check never fails on a value; it prints every
+/// result (`MEASURED ...`, run with `--nocapture`) and fails only if the harness control (scenario 0) is wrong.
+fn float_collective_measure() -> RawCase {
+    RawCase {
+        name: "raw_float_collective_measure",
+        source: "// Hand-written (not emitted): float simd_sum / simd_max / simd_min, measure only.
+#include <metal_stdlib>
+using namespace metal;
+#pragma METAL fp math_mode(safe)
+// threadsPerThreadgroup: 32 x 1 x 1
+static uint pat(uint s, uint l) {
+    uint one = 0x3F800000u, nan = 0x7FC00000u, pinf = 0x7F800000u, ninf = 0xFF800000u, pz = 0u, nz = 0x80000000u;
+    switch (s) {
+        case 0: return one;
+        case 1: return l == 7u ? nan : as_type<uint>((float)(l + 1u));
+        case 2: return l == 0u ? nan : as_type<uint>(5.0f);
+        case 3: return l == 31u ? nan : as_type<uint>(5.0f);
+        case 4: return l == 3u ? pinf : (l == 9u ? ninf : one);
+        case 5: return l == 3u ? pinf : one;
+        case 6: return l == 5u ? pz : nz;
+        case 7: return l == 5u ? nz : pz;
+        case 8: return nz;
+        case 9: return l == 0u ? pz : (l == 1u ? nz : ninf);
+        case 10: return l == 0u ? as_type<uint>(1.0e8f) : (l == 1u ? as_type<uint>(-1.0e8f) : one);
+        default: return l == 0u ? as_type<uint>(-1.0e8f) : (l == 1u ? as_type<uint>(1.0e8f) : one);
+    }
+}
+kernel void fcoll(
+    device uint* b0 [[buffer(0)]],
+    uint3 tid [[thread_position_in_threadgroup]])
+{
+    for (uint s = 0u; s < 12u; ++s) {
+        float v = as_type<float>(pat(s, tid.x));
+        float a = simd_sum(v);
+        float mx = simd_max(v);
+        float mn = simd_min(v);
+        if (tid.x == 0u) {
+            b0[s * 3u] = as_type<uint>(a);
+            b0[s * 3u + 1u] = as_type<uint>(mx);
+            b0[s * 3u + 2u] = as_type<uint>(mn);
+        }
+    }
+}
+",
+        entry: "fcoll",
+        block: [32, 1, 1],
+        grid: [1, 1, 1],
+        out_cells: 36,
+        refusal_is_a_note: true,
+        check: Box::new(|o| {
+            let f = |w: u32| format!("{:#010x} ({})", w, f32::from_bits(w));
+            for (s, label) in FLOAT_SCENARIOS.iter().enumerate() {
+                println!(
+                    "MEASURED float_collective s{s} [{label}] simd={}: sum={} max={} min={}",
+                    o.simd,
+                    f(o.words[s * 3]),
+                    f(o.words[s * 3 + 1]),
+                    f(o.words[s * 3 + 2])
+                );
+            }
+            let want = [32.0f32.to_bits(), 1.0f32.to_bits(), 1.0f32.to_bits()];
+            if o.simd != 32 || o.words[..3] != want {
+                return Err(format!(
+                    "harness control (all ones) is wrong: simd {} got {:?} want {:?}",
+                    o.simd,
+                    &o.words[..3],
+                    want
+                ));
+            }
+            Ok(())
+        }),
+    }
 }
 
 fn block_of(src: &str) -> [u32; 3] {
