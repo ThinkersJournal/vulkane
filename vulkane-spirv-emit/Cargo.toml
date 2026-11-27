@@ -1,6 +1,6 @@
 [package]
 name         = "vulkane-spirv-emit"
-version      = "0.29.0"
+version      = "0.30.0"
 edition      = "2024"
 rust-version = "1.85"
 authors      = ["Eric Evans <CireSnave@gmail.com>"]
@@ -15,20 +15,20 @@ include      = ["src/**", "README.md", "LICENSE-*", "THIRD-PARTY-NOTICES.md"]
 
 [dependencies]
 rspirv         = "0.13.0"
-unpopped       = "~0.59.1"
-unpopped-vocab = "~0.59.1"
+unpopped       = "~0.60.1"
+unpopped-vocab = "~0.60.1"
 
 [dev-dependencies]
 # The published decline fixtures (ROADMAP 9h): one checker-valid kernel or module per `Stmt` variant.
-unpopped = { version = "~0.59.1", features = ["fixtures"] }
+unpopped = { version = "~0.60.1", features = ["fixtures"] }
 # Reflection of the emitted module: entry point, workgroup size, bindings.
 vulkane-spirv-parse = { path = "../vulkane-spirv-parse" }
 # The live-device shift test opens a device through the safe wrapper (and its shared `tests/common`).
 vulkane            = { path = "../vulkane" }
 # G4.2: the host reference the device results are compared with.
-unpopped-cpu-c     = "~0.59.1"
+unpopped-cpu-c     = "~0.60.1"
 # Cross-check: the Slang emitter, compiled by `slangc`, against this one on the same device.
-fishstringer-slang-emit = "~0.8.0"
+fishstringer-slang-emit = "~0.10.0"
 tempfile           = { workspace = true }
 
 [lints.rust]
