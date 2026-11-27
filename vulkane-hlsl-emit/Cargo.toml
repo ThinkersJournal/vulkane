@@ -1,6 +1,6 @@
 [package]
 name         = "vulkane-hlsl-emit"
-version      = "0.31.7"
+version      = "0.32.0"
 edition      = "2024"
 rust-version = "1.85"
 authors      = ["Eric Evans <CireSnave@gmail.com>"]
@@ -18,7 +18,7 @@ unpopped            = "~0.62.0"
 unpopped-vocab      = "~0.62.0"
 # FishStringer owns Slang (CireSnave 2026-11-06). `~` not `^`: this crate asserts the emitter's output shape.
 fishstringer-slang-emit = "~0.12.0"
-vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.31" }
+vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.32" }
 
 [dev-dependencies]
 # The published decline fixtures (ROADMAP 9h): one checker-valid kernel or module per `Stmt` variant.
