@@ -1,12 +1,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # Advisory macOS Metal probe, its own file so it does not run every ci.yml job on its branch
-# (pm-kernels, 2026-11-25). Not in branch protection. The push trigger on the branch is for the
-# first run only: drop it before the PR (leave pull_request + workflow_dispatch).
+# (pm-kernels, 2026-11-25). Not in branch protection. Runs on pull_request and by hand.
 name: Metal probe
 
 on:
-  push:
-    branches: [macos-metal-probe]
   workflow_dispatch: {}
   pull_request:
 

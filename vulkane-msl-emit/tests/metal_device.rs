@@ -19,8 +19,9 @@ use unpopped::kernel::KernelFn;
 use unpopped_vocab::ElementKind;
 use vulkane_msl_emit::Msl;
 use vulkane_test_support::{
-    atomic_kernel, bf16_kernel, div_kernel, float_kernel, flow_kernel, grid_kernel, half_kernel,
-    masked_kernel, narrow_kernel, private_kernel, reverse_kernel, subgroup_kernel, wide_kernel,
+    atomic_kernel, bf16_kernel, collective_kernel, div_kernel, float_kernel, flow_kernel,
+    grid_kernel, half_kernel, masked_kernel, narrow_kernel, private_kernel, reverse_kernel,
+    subgroup_kernel, wide_kernel,
 };
 
 const SENTINEL: u32 = 0xAAAA_AAAA;
@@ -444,6 +445,28 @@ fn cases() -> Vec<Case> {
     narrow_cases(&mut v);
     wide_cases(&mut v);
     div_cases(&mut v);
+    // Board 506 A subgroup collectives (integer kernels), run on the device and checked against Unpopped's CPU oracle at the launch's
+    // stated subgroup size. Lifted by CireSnave 2026-11-26 as his risk call; not a clearance; no attorney; findings, not advice.
+    for (name, kind) in collective_kernel::kinds() {
+        let want = collective_kernel::expected(&kind).unwrap_or_else(|e| panic!("{name}: {e}"));
+        v.push(Case {
+            name: format!("collective_{name}"),
+            kernel: collective_kernel::kernel(kind),
+            grid: Some([1, 1, 1]),
+            inputs: vec![collective_kernel::input()],
+            out_cells: collective_kernel::BLOCK as usize,
+            check: Box::new(move |o| {
+                if o.simd != collective_kernel::SUBGROUP {
+                    return Err(format!(
+                        "the device ran subgroups of {} lanes, not the launch's stated {}: the case does not apply",
+                        o.simd,
+                        collective_kernel::SUBGROUP
+                    ));
+                }
+                eq_words(want.clone())(o)
+            }),
+        });
+    }
     v
 }
 
