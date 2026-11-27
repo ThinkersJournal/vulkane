@@ -7,23 +7,14 @@
 //! Without a device, `glslangValidator` or `spirv-val` the tests follow `VULKANE_REQUIRE_DEVICE`,
 //! `VULKANE_REQUIRE_GLSLANG` and `VULKANE_REQUIRE_SPIRV_VAL` rather than passing silently.
 
-#[path = "../../vulkane-spirv-emit/tests/support/atomic_kernel.rs"]
-mod atomic_kernel;
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
-mod common;
-#[path = "../../vulkane-spirv-emit/tests/support/flow_kernel.rs"]
-mod flow_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/gpu.rs"]
-mod gpu;
-#[path = "../../vulkane-spirv-emit/tests/support/grid_kernel.rs"]
-mod grid_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/private_kernel.rs"]
-mod private_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/reverse_kernel.rs"]
-mod reverse_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/subgroup_kernel.rs"]
-mod subgroup_kernel;
+use vulkane_test_support::atomic_kernel;
+use vulkane_test_support::common;
+use vulkane_test_support::flow_kernel;
+use vulkane_test_support::gpu;
+use vulkane_test_support::grid_kernel;
+use vulkane_test_support::private_kernel;
+use vulkane_test_support::reverse_kernel;
+use vulkane_test_support::subgroup_kernel;
 
 use unpopped::backend::{Backend, GeneratedKernel, LowerError};
 use unpopped::exec::MemorySpace;
@@ -40,7 +31,7 @@ fn reverse(with_barrier: bool) -> GeneratedKernel {
     lower(&reverse_kernel::reverse(
         WORKGROUP_SIZE,
         with_barrier,
-        false,
+        reverse_kernel::SharedLen::Static,
     ))
 }
 
@@ -144,7 +135,7 @@ fn a_barrier_under_divergent_control_is_declined_before_any_text_is_written() {
         Box::new(E::Exec(unpopped::exec::ExecId::ThreadIdx(0))),
         Box::new(E::ConstInt(0, unpopped_vocab::ElementKind::U32)),
     );
-    let mut k = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut k = reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     k.body.0.insert(
         3,
         Stmt::If {
@@ -246,7 +237,11 @@ fn a_block_reversed_through_a_specialization_sized_array_is_exact_on_a_device() 
     let Some(gpu) = gpu::Gpu::open("wgsl_kernel_dynamic") else {
         return;
     };
-    let k = lower(&reverse_kernel::reverse(WORKGROUP_SIZE, true, true));
+    let k = lower(&reverse_kernel::reverse(
+        WORKGROUP_SIZE,
+        true,
+        reverse_kernel::SharedLen::Spec,
+    ));
     assert!(k.source.contains("@id(2) override"), "{}", k.source);
     let input: Vec<u32> = (0..WORKGROUP_SIZE).map(|i| i * 7 + 1).collect();
     let want: Vec<u32> = input.iter().rev().copied().collect();
@@ -284,7 +279,8 @@ fn a_constant_allocation_is_a_typed_decline() {
 fn what_wgsl_cannot_say_is_a_typed_decline_naming_it() {
     use unpopped::exec::Scope;
     use unpopped::kernel::{BarrierKind, MemoryOrder, Stmt};
-    let mut fence = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut fence =
+        reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     fence.body.0.insert(
         3,
         Stmt::Fence {
@@ -294,7 +290,8 @@ fn what_wgsl_cannot_say_is_a_typed_decline_naming_it() {
     );
     declined(&fence, "Fence");
 
-    let mut subgroup = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut subgroup =
+        reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     subgroup.body.0.insert(
         3,
         Stmt::Barrier {
@@ -304,7 +301,8 @@ fn what_wgsl_cannot_say_is_a_typed_decline_naming_it() {
     );
     declined(&subgroup, "Barrier");
 
-    let mut float = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut float =
+        reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     float.compute = unpopped_vocab::ElementKind::F32;
     declined(&float, "a F32 kernel is not lowered");
 }

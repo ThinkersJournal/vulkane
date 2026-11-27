@@ -11,14 +11,10 @@
 //!
 //! Without a device the test follows `VULKANE_REQUIRE_DEVICE` like every other live test.
 
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
-mod common;
-#[path = "support/gpu.rs"]
-mod gpu;
-#[path = "support/reverse_kernel.rs"]
-mod reverse_kernel;
 use reverse_kernel::reverse;
+use vulkane_test_support::common;
+use vulkane_test_support::gpu;
+use vulkane_test_support::reverse_kernel;
 
 use unpopped::backend::Backend;
 use vulkane::safe::SpecializationConstants;
@@ -26,7 +22,15 @@ use vulkane_spirv_emit::{SpirV, WORKGROUP_SIZE};
 
 fn run(gpu: &gpu::Gpu, with_barrier: bool, dynamic: bool, input: &[u32]) -> Vec<u32> {
     let g = SpirV
-        .lower_kernel(&reverse(WORKGROUP_SIZE, with_barrier, dynamic))
+        .lower_kernel(&reverse(
+            WORKGROUP_SIZE,
+            with_barrier,
+            if dynamic {
+                reverse_kernel::SharedLen::Spec
+            } else {
+                reverse_kernel::SharedLen::Static
+            },
+        ))
         .expect("the SPIR-V backend lowers the reverse kernel");
     let words = g.words().expect("words").to_vec();
     // SpecId 2 is the scalar parameter's index; the extent is fixed per pipeline.

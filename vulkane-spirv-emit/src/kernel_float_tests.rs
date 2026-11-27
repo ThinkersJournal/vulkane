@@ -10,13 +10,8 @@ use unpopped_vocab::ElementKind::{F32, F64};
 use crate::tests::assert_valid;
 use crate::{SpirV, required_features};
 
-#[path = "../tests/support/float_kernel.rs"]
-#[allow(
-    dead_code,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-pub(crate) mod float_kernel;
 use float_kernel::{Case, float_kernel};
+pub(crate) use vulkane_test_support::float_kernel;
 
 fn count(src: &str, needle: &str) -> usize {
     src.lines().filter(|l| l.contains(needle)).count()
@@ -67,7 +62,11 @@ fn every_float_multiply_and_add_is_no_contraction() {
 /// find them in the float kernel above.
 #[test]
 fn an_integer_kernel_declares_no_float_control() {
-    let k = crate::kernel_tests::reverse_kernel::reverse(64, true, false);
+    let k = crate::kernel_tests::reverse_kernel::reverse(
+        64,
+        true,
+        crate::kernel_tests::reverse_kernel::SharedLen::Static,
+    );
     let g = SpirV.lower_kernel(&k).expect("lowers");
     for needle in [
         "DenormPreserve",
@@ -106,12 +105,7 @@ fn ops_whose_vulkan_bound_is_looser_than_the_contract_tier_are_declined_by_name(
     }
 }
 
-#[path = "../tests/support/float_flow_kernel.rs"]
-#[allow(
-    dead_code,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod float_flow_kernel;
+use vulkane_test_support::float_flow_kernel;
 
 /// `If`, `While` and `For` in a float kernel give valid modules for both counter types, with the
 /// multiply and the add still `NoContraction`.

@@ -10,9 +10,7 @@ use unpopped_vocab::{ArchSku, TargetId};
 use crate::tests::assert_valid;
 use crate::{SpirV, required_features};
 
-#[path = "../tests/support/narrow_kernel.rs"]
-#[allow(dead_code)]
-mod narrow_kernel;
+use vulkane_test_support::narrow_kernel;
 
 const CAPS: [(&str, &str); 4] = [
     ("OpCapability Int8", "SPV_KHR_8bit_storage"),
@@ -65,7 +63,11 @@ fn each_width_declares_only_its_own_capabilities_and_validates() {
 /// `tests/golden_unchanged.rs` pins byte for byte).
 #[test]
 fn a_32_bit_kernel_declares_no_narrow_capability() {
-    let k = crate::kernel_tests::reverse_kernel::reverse(64, true, false);
+    let k = crate::kernel_tests::reverse_kernel::reverse(
+        64,
+        true,
+        crate::kernel_tests::reverse_kernel::SharedLen::Static,
+    );
     let g = SpirV.lower_kernel(&k).expect("lowers");
     for (cap, ext) in CAPS {
         assert!(!g.source.contains(cap) && !g.source.contains(ext), "{cap}");

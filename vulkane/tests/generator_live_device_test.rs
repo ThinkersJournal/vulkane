@@ -12,7 +12,7 @@
 //! precondition in this file is device-absence and every skip here is
 //! legitimately fatal in an environment that promised a device.
 
-mod common;
+use vulkane_test_support::common;
 
 use vulkane::safe::{
     ApiVersion, DeviceSafeExt, Instance, InstanceSafeExt, PhysicalDeviceSafeExt, QueueSafeExt,

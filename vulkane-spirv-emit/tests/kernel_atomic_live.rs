@@ -6,13 +6,9 @@
 //!
 //! Without a device the test follows `VULKANE_REQUIRE_DEVICE` like every other live test.
 
-#[path = "support/atomic_kernel.rs"]
-mod atomic_kernel;
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
-mod common;
-#[path = "support/gpu.rs"]
-mod gpu;
+use vulkane_test_support::atomic_kernel;
+use vulkane_test_support::common;
+use vulkane_test_support::gpu;
 
 use atomic_kernel::{BLOCKS, SENTINEL, THREADS, atomic_kernel};
 use unpopped::backend::Backend;

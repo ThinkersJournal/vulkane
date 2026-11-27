@@ -20,36 +20,38 @@ use unpopped::ir::{BinaryOp, CastSpec, RoundMode, Saturation, ScalarExpr as E};
 use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt};
 use unpopped_vocab::ElementKind;
 
-pub(crate) const THREADS: u32 = 64;
-pub(crate) const K: usize = 9;
+/// Threads launched.
+pub const THREADS: u32 = 64;
+/// Elements per thread.
+pub const K: usize = 9;
 const B: i64 = 1 << 32;
 
-fn bx(e: E) -> Box<E> {
-    Box::new(e)
-}
-
 fn add(a: E, b: E) -> E {
-    E::Add(bx(a), bx(b))
+    E::Add(Box::new(a), Box::new(b))
 }
 
 fn mul(a: E, b: E) -> E {
-    E::Mul(bx(a), bx(b))
+    E::Mul(Box::new(a), Box::new(b))
 }
 
 fn bin(op: BinaryOp, a: E, b: E) -> E {
-    E::Binary(op, bx(a), bx(b))
+    E::Binary(op, Box::new(a), Box::new(b))
 }
 
 /// `a - (a / b) * b`, zero for `b == 0`: the composition the ruling gives integer `Rem`.
 fn rem(a: E, b: E, ty: ElementKind) -> E {
-    let q = E::Div(bx(a.clone()), bx(b.clone()));
-    let r = E::Sub(bx(a), bx(mul(q, b.clone())));
+    let q = E::Div(Box::new(a.clone()), Box::new(b.clone()));
+    let r = E::Sub(Box::new(a), Box::new(mul(q, b.clone())));
     let zero = || E::ConstInt(0, ty);
-    E::Select(bx(bin(BinaryOp::CmpEq, b, zero())), bx(zero()), bx(r))
+    E::Select(
+        Box::new(bin(BinaryOp::CmpEq, b, zero())),
+        Box::new(zero()),
+        Box::new(r),
+    )
 }
 
 /// The kernel at `ty` (`I64` or `U64`).
-pub(crate) fn wide_kernel(ty: ElementKind) -> KernelFn {
+pub fn wide_kernel(ty: ElementKind) -> KernelFn {
     let c = |v: i64| E::ConstInt(v, ty);
     let (x, zero, a2) = (E::Local(0), E::Local(1), E::Local(2));
     let signed = ty == ElementKind::I64;
@@ -60,11 +62,11 @@ pub(crate) fn wide_kernel(ty: ElementKind) -> KernelFn {
         bin(BinaryOp::Shl, x1.clone(), c(40)),
         bin(BinaryOp::Shl, x1.clone(), c(99)),
         bin(BinaryOp::Shr, bin(BinaryOp::Shl, x1.clone(), c(62)), c(29)),
-        E::Div(bx(a2.clone()), bx(zero.clone())),
+        E::Div(Box::new(a2.clone()), Box::new(zero.clone())),
         if signed {
-            E::Div(bx(c(i64::MIN)), bx(c(-1)))
+            E::Div(Box::new(c(i64::MIN)), Box::new(c(-1)))
         } else {
-            E::Div(bx(a2.clone()), bx(x1))
+            E::Div(Box::new(a2.clone()), Box::new(x1))
         },
         rem(
             add(a2.clone(), c(5)),
@@ -82,7 +84,7 @@ pub(crate) fn wide_kernel(ty: ElementKind) -> KernelFn {
             local: 0,
             // An execution id is a `U32`; the cast carries it to the kernel's dtype.
             init: E::Cast(
-                bx(E::Exec(ExecId::ThreadIdx(0))),
+                Box::new(E::Exec(ExecId::ThreadIdx(0))),
                 CastSpec {
                     to: ty,
                     round: RoundMode::NearestEven,
@@ -92,7 +94,7 @@ pub(crate) fn wide_kernel(ty: ElementKind) -> KernelFn {
         },
         Stmt::Let {
             local: 1,
-            init: E::Sub(bx(x.clone()), bx(x.clone())),
+            init: E::Sub(Box::new(x.clone()), Box::new(x.clone())),
         },
         Stmt::Let {
             local: 2,
@@ -123,7 +125,7 @@ pub(crate) fn wide_kernel(ty: ElementKind) -> KernelFn {
 /// The host result of cell `(t, k)` computed at `width` bits (64 for the kernel, 32 for the
 /// mutant: a lowering that goes through 32 bits, which wraps every value, constant and count at 2^32),
 /// as the bits the device holds, by the ruled semantics.
-pub(crate) fn expected_at(width: u32, signed: bool, t: u64, k: usize) -> u64 {
+pub fn expected_at(width: u32, signed: bool, t: u64, k: usize) -> u64 {
     let m = if width == 64 {
         u64::MAX
     } else {
@@ -161,12 +163,12 @@ pub(crate) fn expected_at(width: u32, signed: bool, t: u64, k: usize) -> u64 {
 }
 
 /// The host result at the kernel's own 64 bits.
-pub(crate) fn expected(signed: bool, t: u64, k: usize) -> u64 {
+pub fn expected(signed: bool, t: u64, k: usize) -> u64 {
     expected_at(64, signed, t, k)
 }
 
 /// The device words (little-endian halves) of every cell, in cell order.
-pub(crate) fn expected_words(signed: bool) -> Vec<u32> {
+pub fn expected_words(signed: bool) -> Vec<u32> {
     (0..u64::from(THREADS))
         .flat_map(|t| (0..K).map(move |k| expected(signed, t, k)))
         .flat_map(|v| [v as u32, (v >> 32) as u32])

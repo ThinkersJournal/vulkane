@@ -21,23 +21,23 @@ use unpopped::kernel::{
 };
 use unpopped_vocab::ElementKind;
 
-pub(crate) const BLOCK: u32 = 64;
-pub(crate) const BLOCKS: u32 = 16;
-#[allow(dead_code)]
-pub(crate) const THREADS: u32 = BLOCK * BLOCKS;
+/// Threads per workgroup.
+pub const BLOCK: u32 = 64;
+/// Workgroups launched.
+pub const BLOCKS: u32 = 16;
+/// Threads launched in total.
+pub const THREADS: u32 = BLOCK * BLOCKS;
 /// The 64-bit value the harness fill leaves in a cell, as `I64`.
-pub(crate) const SENTINEL: u64 = 0xAAAA_AAAA_AAAA_AAAA;
-pub(crate) const B: i64 = 1 << 32;
-
-fn bx(e: E) -> Box<E> {
-    Box::new(e)
-}
+pub const SENTINEL: u64 = 0xAAAA_AAAA_AAAA_AAAA;
+/// One above the 32-bit range: each add is `1 << 32`, so a lost 64-bit carry shows.
+pub const B: i64 = 1 << 32;
 
 fn add(a: E, b: E) -> E {
-    E::Add(bx(a), bx(b))
+    E::Add(Box::new(a), Box::new(b))
 }
 
-pub(crate) fn atomic_wide_kernel(ty: ElementKind, racy: bool) -> KernelFn {
+/// The 64-bit atomic-add kernel over `ty`; `racy` swaps the atomic for plain memory traffic (the control).
+pub fn atomic_wide_kernel(ty: ElementKind, racy: bool) -> KernelFn {
     let c = |v: i64| E::ConstInt(v, ty);
     let cell = |i: i64| Place::Logical {
         buffer: 0,
@@ -61,7 +61,7 @@ pub(crate) fn atomic_wide_kernel(ty: ElementKind, racy: bool) -> KernelFn {
     };
     let cast = |e: E| {
         E::Cast(
-            bx(e),
+            Box::new(e),
             CastSpec {
                 to: ty,
                 round: RoundMode::NearestEven,
@@ -71,8 +71,8 @@ pub(crate) fn atomic_wide_kernel(ty: ElementKind, racy: bool) -> KernelFn {
     };
     let gid = add(
         E::Mul(
-            bx(cast(E::Exec(ExecId::BlockIdx(0)))),
-            bx(c(i64::from(BLOCK))),
+            Box::new(cast(E::Exec(ExecId::BlockIdx(0)))),
+            Box::new(c(i64::from(BLOCK))),
         ),
         cast(E::Exec(ExecId::ThreadIdx(0))),
     );
@@ -101,7 +101,7 @@ pub(crate) fn atomic_wide_kernel(ty: ElementKind, racy: bool) -> KernelFn {
         order: MemoryOrder::Relaxed,
         scope: Scope::Device,
     });
-    let won = E::Binary(CmpEq, bx(E::Local(2)), bx(c(sentinel)));
+    let won = E::Binary(CmpEq, Box::new(E::Local(2)), Box::new(c(sentinel)));
     body.push(rmw(AtomicOp::Add, 3, won, None));
     let mut k = KernelFn::new(
         "atomics64",

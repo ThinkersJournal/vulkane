@@ -18,7 +18,7 @@
 //! job installs, has neither `VK_KHR_push_descriptor` nor
 //! `VK_EXT_shader_atomic_float`, and those absences are conformant.
 
-mod common;
+use vulkane_test_support::common;
 
 use vulkane::raw::bindings::{VkExtent2D, VkOffset2D, VkRect2D};
 use vulkane::safe::{

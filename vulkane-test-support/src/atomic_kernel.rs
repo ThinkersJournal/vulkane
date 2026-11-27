@@ -20,11 +20,14 @@ use unpopped::kernel::{
 };
 use unpopped_vocab::ElementKind::U32;
 
-pub(crate) const BLOCK: u32 = 64;
-pub(crate) const BLOCKS: u32 = 16;
-#[allow(dead_code)] // the unit tests do not use it; the live test does
-pub(crate) const THREADS: u32 = BLOCK * BLOCKS;
-pub(crate) const SENTINEL: u32 = 0xAAAA_AAAA;
+/// Threads per workgroup.
+pub const BLOCK: u32 = 64;
+/// Workgroups launched.
+pub const BLOCKS: u32 = 16;
+/// Threads launched in total.
+pub const THREADS: u32 = BLOCK * BLOCKS;
+/// The value the harness fill leaves in a cell a thread never wrote.
+pub const SENTINEL: u32 = 0xAAAA_AAAA;
 
 fn c(v: i64) -> E {
     E::ConstInt(v, U32)
@@ -49,7 +52,7 @@ fn rmw(op: AtomicOp, i: i64, value: E, old: Option<u32>) -> Stmt {
 }
 
 /// The kernel; `racy` replaces cell 0's atomic add by a plain read-modify-write.
-pub(crate) fn atomic_kernel(racy: bool) -> KernelFn {
+pub fn atomic_kernel(racy: bool) -> KernelFn {
     let gid = E::Add(
         Box::new(E::Mul(
             Box::new(E::Exec(ExecId::BlockIdx(0))),

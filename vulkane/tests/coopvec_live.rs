@@ -20,7 +20,7 @@
 //! the same machine reports zero combinations. Absence of a *device* is fatal
 //! under `VULKANE_REQUIRE_DEVICE`.
 
-mod common;
+use vulkane_test_support::common;
 
 use vulkane::safe::ApiVersion;
 

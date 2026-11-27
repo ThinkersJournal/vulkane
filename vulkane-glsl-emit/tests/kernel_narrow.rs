@@ -7,22 +7,11 @@
 //! `glslang`, validated by `spirv-val`, run on a device created with `shaderInt8` + `storageBuffer8BitAccess`
 //! or `shaderInt16` + `storageBuffer16BitAccess`; without them a `SKIP (unsupported)` line names them.
 
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(
-    dead_code,
-    unreachable_pub,
-    missing_docs,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod common;
-#[path = "support/glslang.rs"]
-mod glslang;
-#[path = "../../vulkane-spirv-emit/tests/support/gpu.rs"]
-mod gpu;
-#[path = "../../vulkane-spirv-emit/tests/support/narrow_kernel.rs"]
-mod narrow_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/reverse_kernel.rs"]
-mod reverse_kernel;
+use vulkane_test_support::common;
+use vulkane_test_support::glslang;
+use vulkane_test_support::gpu;
+use vulkane_test_support::narrow_kernel;
+use vulkane_test_support::reverse_kernel;
 
 use glslang::{glslang_words, validates};
 use narrow_kernel::{THREADS, input_words, width};
@@ -160,7 +149,11 @@ fn the_narrow_extensions_are_declared_only_for_the_widths_used() {
     );
     assert!(!g16.source.contains("8bit"), "{}", g16.source);
     let plain = Glsl
-        .lower_kernel(&reverse_kernel::reverse(WORKGROUP_SIZE, true, false))
+        .lower_kernel(&reverse_kernel::reverse(
+            WORKGROUP_SIZE,
+            true,
+            reverse_kernel::SharedLen::Static,
+        ))
         .expect("lowers");
     assert!(!plain.source.contains("_storage"), "{}", plain.source);
 }

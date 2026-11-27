@@ -5,22 +5,9 @@
 //! (fused, no swap, swap in place) each differ from the reference somewhere. A device without the float
 //! controls prints a `SKIP (unsupported)` line naming the capability.
 
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(
-    dead_code,
-    unreachable_pub,
-    missing_docs,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod common;
-#[path = "support/gpu.rs"]
-mod gpu;
-#[path = "support/vector_kernel.rs"]
-#[allow(
-    dead_code,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod vector_kernel;
+use vulkane_test_support::common;
+use vulkane_test_support::gpu;
+use vulkane_test_support::vector_kernel;
 
 use unpopped::backend::Backend;
 use vector_kernel::{Variant, data, same, vector_kernel};

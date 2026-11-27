@@ -26,8 +26,7 @@
 //!   evaporated rather than "you're on a laptop".
 //!
 //!
-//! # Why the `#[allow(dead_code)]` on almost everything here
-//!
+//! # Why the `//!
 //! Cargo compiles each file in `tests/` into its OWN binary, and `mod common;`
 //! includes this module separately into every one of them. A helper used by
 //! four test binaries and not the fifth is dead code *in the fifth*, so without
@@ -78,7 +77,6 @@
 pub const REQUIRE_DEVICE: &str = "VULKANE_REQUIRE_DEVICE";
 
 /// Whether skips are currently fatal.
-#[allow(dead_code)]
 pub fn skips_are_fatal() -> bool {
     armed(REQUIRE_DEVICE)
 }
@@ -174,7 +172,6 @@ fn armed(var: &str) -> bool {
 /// Carrying the class with the cause means the decision is made once, where the
 /// cause is known, and [`skip`] routes it mechanically. There is no per-site
 /// judgement left to get wrong.
-#[allow(dead_code)]
 pub enum Missing {
     /// No usable device. An environment that promised one is misconfigured, so
     /// this is fatal under [`REQUIRE_DEVICE`].
@@ -184,7 +181,6 @@ pub enum Missing {
     Capability(String),
 }
 
-#[allow(dead_code)]
 impl Missing {
     /// No instance, no physical device, no queue family the suite requires.
     pub fn device(reason: impl Into<String>) -> Self {
@@ -207,7 +203,6 @@ impl Missing {
 ///     Err(cause) => return common::skip(cause),
 /// };
 /// ```
-#[allow(dead_code)]
 pub fn skip(cause: Missing) {
     match cause {
         Missing::Device(reason) => skipped(&reason),
@@ -232,7 +227,6 @@ pub fn skip(cause: Missing) {
 /// every device has. For "the device is here but lacks this extension", use
 /// [`skipped_unsupported`]; see the module docs for why the distinction is what
 /// keeps the fatal mode usable.
-#[allow(dead_code)]
 pub fn skipped(reason: &str) {
     // Printed before the fatal check, so the `SKIP:` line exists in both modes.
     // Panicking first would mean the one line you would grep for is missing
@@ -266,7 +260,6 @@ pub fn skipped(reason: &str) {
 /// The line is still printed, so `--nocapture` on a machine that *should* have
 /// the capability shows it going unexercised — which is the failure mode a
 /// silent `return` hides.
-#[allow(dead_code)]
 pub fn skipped_unsupported(what: &str) {
     eprintln!("SKIP (unsupported): {what}");
 }
@@ -300,7 +293,6 @@ pub fn skipped_unsupported(what: &str) {
 /// answering its question into a failed run. See
 /// `extension_pnext_test::device_create_info_pnext_is_plumbed_without_error`
 /// for one that bootstraps itself for exactly this reason.
-#[allow(dead_code)]
 pub fn compute_device(
     app_name: &str,
 ) -> Result<(vulkane::safe::Device, vulkane::safe::PhysicalDevice, u32), Missing> {
@@ -368,7 +360,6 @@ const GPU_RUN_UNGUARDED: &str = "GPU_RUN_UNGUARDED";
 /// spawn per run from Rust without adding a dependency. Raised with Fuel's
 /// architect, who owns the wrapper; a lockfile the wrapper creates and removes
 /// would make the check a cheap `Path::exists` instead.
-#[allow(dead_code)]
 pub fn require_serialization_lock() {
     if lock_is_held() {
         return;
@@ -502,7 +493,6 @@ fn lockfile_names_pid(meta: &str, pid: &str) -> bool {
 /// for different searches.
 ///
 /// [`init_at_or_skip`]: # "safe_wrapper_test's version-gated bootstrap"
-#[allow(dead_code)]
 pub fn instance_and_devices(
     app_name: &str,
     api_version: vulkane::safe::ApiVersion,
@@ -533,7 +523,6 @@ pub fn instance_and_devices(
 /// Searching past device 0 matters on a multi-adapter machine: taking the first
 /// device and asking whether *it* has compute produces a skip that says "no
 /// compute queue family" while a perfectly usable second adapter sits unused.
-#[allow(dead_code)]
 pub fn first_compute(
     devices: Vec<vulkane::safe::PhysicalDevice>,
 ) -> Result<(vulkane::safe::PhysicalDevice, u32), Missing> {
@@ -570,7 +559,6 @@ pub fn first_compute(
 /// not support them — conformant, and not something to fail CI over. Passing
 /// `Some((features, label))` therefore classifies the failure as a capability
 /// gap and reports `label`.
-#[allow(dead_code)]
 pub fn create_device_on(
     physical: &vulkane::safe::PhysicalDevice,
     qf: u32,
@@ -658,7 +646,7 @@ mod lock_witness_tests {
 /// without documenting it fails here.
 #[test]
 fn the_doc_names_every_value_the_predicate_accepts() {
-    let src = include_str!("mod.rs");
+    let src = include_str!("common.rs");
 
     // The words the PREDICATE accepts, taken from its match arms rather than
     // from a list kept here -- a second list would drift exactly as the prose

@@ -10,9 +10,9 @@ use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stm
 use unpopped_vocab::ElementKind::U32;
 
 /// Threads per block, per axis (24 threads: no axis equals another).
-pub(crate) const BLOCK: [u32; 3] = [4, 3, 2];
+pub const BLOCK: [u32; 3] = [4, 3, 2];
 /// Blocks per grid, per axis (30 blocks).
-pub(crate) const GRID: [u32; 3] = [3, 2, 5];
+pub const GRID: [u32; 3] = [3, 2, 5];
 
 fn c(v: i64) -> E {
     E::ConstInt(v, U32)
@@ -64,7 +64,8 @@ fn packed() -> E {
     })
 }
 
-pub(crate) fn grid_kernel() -> KernelFn {
+/// A kernel that stores each thread's block and grid ids.
+pub fn grid_kernel() -> KernelFn {
     let body = vec![
         Stmt::Let {
             local: 0,
@@ -106,8 +107,7 @@ pub(crate) fn grid_kernel() -> KernelFn {
 }
 
 /// The word cell `(x, y, z)` of the launch must hold: the ids of the thread that owns it.
-#[allow(dead_code)]
-pub(crate) fn expected(x: u32, y: u32, z: u32) -> u32 {
+pub fn expected(x: u32, y: u32, z: u32) -> u32 {
     let (g, t) = ([x, y, z], BLOCK);
     let (mut w, mut shift) = (0, 0);
     for a in 0..3 {
@@ -122,7 +122,6 @@ pub(crate) fn expected(x: u32, y: u32, z: u32) -> u32 {
 }
 
 /// Cells in the launch, and the dispatch shape that covers it.
-#[allow(dead_code)]
-pub(crate) fn cells() -> usize {
+pub fn cells() -> usize {
     (0..3).map(|a| (BLOCK[a] * GRID[a]) as usize).product()
 }

@@ -11,7 +11,7 @@
 //! local hygiene rather than freeze-path evidence, which is why they were done
 //! after `kiss_target_live.rs` rather than first.
 
-mod common;
+use vulkane_test_support::common;
 
 use vulkane::safe::{
     AccessFlags, AccessFlags2, AllocationCreateInfo, AllocationStrategy, AllocationUsage,

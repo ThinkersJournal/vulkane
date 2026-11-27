@@ -4,24 +4,12 @@
 //! in `tests/golden/` were written by the emitter BEFORE the 64-bit change;
 //! `SPIRV_GOLDEN_WRITE=1` rewrites them (only for a deliberate change).
 
-#[path = "support/atomic_kernel.rs"]
-#[allow(dead_code)]
-mod atomic_kernel;
-#[path = "support/flow_kernel.rs"]
-#[allow(dead_code)]
-mod flow_kernel;
-#[path = "support/grid_kernel.rs"]
-#[allow(dead_code)]
-mod grid_kernel;
-#[path = "support/private_kernel.rs"]
-#[allow(dead_code)]
-mod private_kernel;
-#[path = "support/reverse_kernel.rs"]
-#[allow(dead_code)]
-mod reverse_kernel;
-#[path = "support/subgroup_kernel.rs"]
-#[allow(dead_code)]
-mod subgroup_kernel;
+use vulkane_test_support::atomic_kernel;
+use vulkane_test_support::flow_kernel;
+use vulkane_test_support::grid_kernel;
+use vulkane_test_support::private_kernel;
+use vulkane_test_support::reverse_kernel;
+use vulkane_test_support::subgroup_kernel;
 
 use unpopped::backend::Backend;
 use unpopped::exec::MemorySpace;
@@ -31,8 +19,14 @@ use vulkane_spirv_emit::{SpirV, WORKGROUP_SIZE};
 fn kernels() -> Vec<(&'static str, KernelFn)> {
     let n = WORKGROUP_SIZE;
     vec![
-        ("reverse_barrier", reverse_kernel::reverse(n, true, false)),
-        ("reverse_dynamic", reverse_kernel::reverse(n, true, true)),
+        (
+            "reverse_barrier",
+            reverse_kernel::reverse(n, true, reverse_kernel::SharedLen::Static),
+        ),
+        (
+            "reverse_dynamic",
+            reverse_kernel::reverse(n, true, reverse_kernel::SharedLen::Spec),
+        ),
         ("flow", flow_kernel::flow_kernel()),
         ("grid", grid_kernel::grid_kernel()),
         ("atomic", atomic_kernel::atomic_kernel(false)),

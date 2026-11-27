@@ -21,9 +21,12 @@ use unpopped::ir::{BinaryOp, ScalarExpr as E};
 use unpopped::kernel::{Block, BufferRole, KernelFn, LocalDecl, Param, Place, Stmt, Unroll};
 use unpopped_vocab::ElementKind::{self, F32, I32, U32};
 
-pub(crate) const THREADS: usize = 256;
-pub(crate) const WEIGHTS: [f32; 4] = [1.5, -2.0, 0.25, 3.0];
-pub(crate) const XS: [f32; 24] = [
+/// Threads launched.
+pub const THREADS: usize = 256;
+/// The float weights the loop kernel multiplies by.
+pub const WEIGHTS: [f32; 4] = [1.5, -2.0, 0.25, 3.0];
+/// The float inputs the loop kernel reads, one per thread (cycled).
+pub const XS: [f32; 24] = [
     0.1,
     -0.1,
     3.0,
@@ -51,10 +54,6 @@ pub(crate) const XS: [f32; 24] = [
     1.999_999_9,
 ];
 
-fn b(e: E) -> Box<E> {
-    Box::new(e)
-}
-
 fn at(buffer: u32, index: E) -> Place {
     Place::Logical {
         buffer,
@@ -63,11 +62,11 @@ fn at(buffer: u32, index: E) -> Place {
 }
 
 fn cmp_gt(l: E, r: E) -> E {
-    E::Binary(BinaryOp::CmpGt, b(l), b(r))
+    E::Binary(BinaryOp::CmpGt, Box::new(l), Box::new(r))
 }
 
 /// The kernel: `counter` is `U32` (up from 0) or `I32` (down from 3, step -1).
-pub(crate) fn float_flow_kernel(counter: ElementKind) -> KernelFn {
+pub fn float_flow_kernel(counter: ElementKind) -> KernelFn {
     let (y, acc, w, i) = (E::Local(0), E::Local(1), E::Local(2), E::Local(3));
     let ci = |v: i64| E::ConstInt(v, counter);
     let (start, end, step) = if counter == I32 {
@@ -75,7 +74,7 @@ pub(crate) fn float_flow_kernel(counter: ElementKind) -> KernelFn {
     } else {
         (ci(0), ci(4), ci(1))
     };
-    let prod = || E::Mul(b(y.clone()), b(w.clone()));
+    let prod = || E::Mul(Box::new(y.clone()), Box::new(w.clone()));
     let body = vec![
         Stmt::Load {
             local: 0,
@@ -100,11 +99,11 @@ pub(crate) fn float_flow_kernel(counter: ElementKind) -> KernelFn {
                     cond: cmp_gt(prod(), E::Const(0.0)),
                     then: Block(vec![Stmt::Assign {
                         local: 1,
-                        value: E::Add(b(acc.clone()), b(prod())),
+                        value: E::Add(Box::new(acc.clone()), Box::new(prod())),
                     }]),
                     els: Block(vec![Stmt::Assign {
                         local: 1,
-                        value: E::Sub(b(acc.clone()), b(w.clone())),
+                        value: E::Sub(Box::new(acc.clone()), Box::new(w.clone())),
                     }]),
                 },
                 Stmt::If {
@@ -118,7 +117,7 @@ pub(crate) fn float_flow_kernel(counter: ElementKind) -> KernelFn {
             cond: cmp_gt(acc.clone(), E::Const(8.0)),
             body: Block(vec![Stmt::Assign {
                 local: 1,
-                value: E::Mul(b(acc.clone()), b(E::Const(0.5))),
+                value: E::Mul(Box::new(acc.clone()), Box::new(E::Const(0.5))),
             }]),
         },
         Stmt::Store {
@@ -148,7 +147,7 @@ pub(crate) fn float_flow_kernel(counter: ElementKind) -> KernelFn {
 
 /// What a variant of the kernel computes on the host: the reference, or one wrong kernel.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub(crate) enum Variant {
+pub enum Variant {
     /// The kernel as written.
     Right,
     /// A fused multiply-add where the kernel does a multiply then an add.
@@ -158,7 +157,7 @@ pub(crate) enum Variant {
 }
 
 /// The result for input `y`, the weights visited in `order`.
-pub(crate) fn host(y: f32, order: [usize; 4], v: Variant) -> f32 {
+pub fn host(y: f32, order: [usize; 4], v: Variant) -> f32 {
     let mut acc = 0.0f32;
     for &i in &order {
         let w = WEIGHTS[i];
@@ -182,7 +181,7 @@ pub(crate) fn host(y: f32, order: [usize; 4], v: Variant) -> f32 {
 }
 
 /// The weight order of the kernel with this counter type.
-pub(crate) fn order(counter: ElementKind) -> [usize; 4] {
+pub fn order(counter: ElementKind) -> [usize; 4] {
     if counter == U32 {
         [0, 1, 2, 3]
     } else {
@@ -191,7 +190,7 @@ pub(crate) fn order(counter: ElementKind) -> [usize; 4] {
 }
 
 /// Input words (`x`, `wts` padded to the same length), and the expected output for `variant`.
-pub(crate) fn data(counter: ElementKind, v: Variant) -> (Vec<u32>, Vec<u32>, Vec<u32>) {
+pub fn data(counter: ElementKind, v: Variant) -> (Vec<u32>, Vec<u32>, Vec<u32>) {
     let mut xs = Vec::new();
     let mut want = Vec::new();
     for t in 0..THREADS {
@@ -205,7 +204,7 @@ pub(crate) fn data(counter: ElementKind, v: Variant) -> (Vec<u32>, Vec<u32>, Vec
 }
 
 /// Whether two outputs agree: bit-exact except that every NaN equals every NaN.
-pub(crate) fn same(got: &[u32], want: &[u32]) -> Result<(), String> {
+pub fn same(got: &[u32], want: &[u32]) -> Result<(), String> {
     for (t, (g, w)) in got.iter().zip(want).enumerate() {
         let nan = |x: u32| f32::from_bits(x).is_nan();
         if !(nan(*g) && nan(*w)) && g != w {

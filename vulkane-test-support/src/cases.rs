@@ -7,7 +7,7 @@ use unpopped_vocab::{ArchSku, ElementKind, OpCategory, OperandDesc, StructureKey
 
 /// How closely the device must match the host for one op.
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub(crate) enum Tol {
+pub enum Tol {
     /// Bit-identical (NaN equals NaN).
     Exact,
     /// Bit-identical except that `+0` and `-0` are the same: SPIR-V does not specify the sign of a
@@ -46,7 +46,7 @@ fn agree_f32(tol: Tol, g: f32, w: f32) -> bool {
 }
 
 /// Do the two result cells agree under `tol`? Non-float cells must be bit-identical.
-pub(crate) fn agree(tol: Tol, dt: ElementKind, got: u32, want: u32) -> bool {
+pub fn agree(tol: Tol, dt: ElementKind, got: u32, want: u32) -> bool {
     got == want
         || (dt == ElementKind::F32 && agree_f32(tol, f32::from_bits(got), f32::from_bits(want)))
 }
@@ -54,7 +54,7 @@ pub(crate) fn agree(tol: Tol, dt: ElementKind, got: u32, want: u32) -> bool {
 /// Which input rows the op is specified on. Outside it SPIR-V leaves the result undefined (or, for
 /// a signed-zero input, device-dependent), so a disagreement there is reported, not failed.
 #[derive(Copy, Clone, Debug)]
-pub(crate) enum Domain {
+pub enum Domain {
     /// Every row.
     All,
     /// GLSL.std.450 `Pow`: undefined for `x < 0` and for `x == 0 && y <= 0`.
@@ -65,7 +65,8 @@ pub(crate) enum Domain {
 }
 
 impl Domain {
-    pub(crate) fn holds(self, row: &[u32]) -> bool {
+    /// Whether the input row lies where the function is defined.
+    pub fn holds(self, row: &[u32]) -> bool {
         let f = |i: usize| f32::from_bits(row[i]);
         match self {
             Domain::All => true,
@@ -76,14 +77,14 @@ impl Domain {
 }
 
 /// One op at one dtype, with the input columns it is run on.
-pub(crate) struct Case {
-    pub(crate) domain: Domain,
-    pub(crate) name: String,
-    pub(crate) dt: ElementKind,
-    pub(crate) tol: Tol,
-    pub(crate) def: OpDef,
-    pub(crate) key: StructureKey,
-    pub(crate) inputs: Vec<Vec<u32>>,
+pub struct Case {
+    pub domain: Domain,
+    pub name: String,
+    pub dt: ElementKind,
+    pub tol: Tol,
+    pub def: OpDef,
+    pub key: StructureKey,
+    pub inputs: Vec<Vec<u32>>,
 }
 
 fn key(n_operands: usize, cat: OpCategory, dt: ElementKind) -> StructureKey {
@@ -304,7 +305,7 @@ fn int_case(name: String, dt: ElementKind, def: OpDef) -> Case {
 }
 
 /// Every case the oracle runs: f32 unary and binary ops, f32 arithmetic, i32/u32 integer ops.
-pub(crate) fn cases() -> Vec<Case> {
+pub fn cases() -> Vec<Case> {
     unary_cases()
         .chain(binary_cases())
         .chain(arith_cases())

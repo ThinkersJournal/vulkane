@@ -14,7 +14,7 @@
 //! exercise real cross-API interop (which would need a companion
 //! CUDA/HIP/D3D12 process).
 
-mod common;
+use vulkane_test_support::common;
 
 use vulkane::raw::PNextChainable;
 #[cfg(unix)]

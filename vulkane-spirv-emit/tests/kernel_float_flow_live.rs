@@ -6,22 +6,9 @@
 //! somewhere, or the check could not catch it. A device without the float controls prints a
 //! `SKIP (unsupported)` line naming the capability.
 
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(
-    dead_code,
-    unreachable_pub,
-    missing_docs,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod common;
-#[path = "support/float_flow_kernel.rs"]
-#[allow(
-    dead_code,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod float_flow_kernel;
-#[path = "support/gpu.rs"]
-mod gpu;
+use vulkane_test_support::common;
+use vulkane_test_support::float_flow_kernel;
+use vulkane_test_support::gpu;
 
 use float_flow_kernel::{Variant, data, float_flow_kernel, same};
 use unpopped::backend::Backend;

@@ -20,7 +20,8 @@ fn sub(a: E, b: E) -> E {
     E::Sub(Box::new(a), Box::new(b))
 }
 
-pub(crate) fn bin(op: unpopped::ir::BinaryOp, a: E, b: E) -> E {
+/// A binary expression `a op b`.
+pub fn bin(op: unpopped::ir::BinaryOp, a: E, b: E) -> E {
     E::Binary(op, Box::new(a), Box::new(b))
 }
 
@@ -91,7 +92,8 @@ fn reduce_and_store() -> Vec<Stmt> {
     ]
 }
 
-pub(crate) fn flow_kernel() -> KernelFn {
+/// Nested loops with `Break`, `Continue` and an early `Return`.
+pub fn flow_kernel() -> KernelFn {
     let mut body = vec![
         Stmt::Let {
             local: 0,
@@ -121,8 +123,7 @@ pub(crate) fn flow_kernel() -> KernelFn {
 
 /// What thread `t` stores, or `None` when it returns first: the even `i` below `min(t, 32)` summed,
 /// then reduced modulo 40.
-#[allow(dead_code)]
-pub(crate) fn expected(t: u32) -> Option<u32> {
+pub fn expected(t: u32) -> Option<u32> {
     if t == 7 {
         return None;
     }

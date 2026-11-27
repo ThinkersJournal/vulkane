@@ -18,6 +18,11 @@ components = [
 name       = "runtime"
 components = ["vulkane"]
 
+# Test-only, never published; it depends on `vulkane` and an emitter, and they take it back as a dev-dependency.
+[[architecture.layer]]
+name       = "test-support"
+components = ["vulkane-test-support"]
+
 # Per-file SPDX/licence gate (SUP-016, licence-tools#6). `copyright_expected` names files
 # that legitimately carry a third party's copyright instead of ours; none is waived:
 #   spdx_gate.py           - the gate script copy kept for the fleet comparison

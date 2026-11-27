@@ -7,25 +7,15 @@
 //! Without a device, `glslangValidator` or `spirv-val` the tests follow `VULKANE_REQUIRE_DEVICE`,
 //! `VULKANE_REQUIRE_GLSLANG` and `VULKANE_REQUIRE_SPIRV_VAL` rather than passing silently.
 
-#[path = "../../vulkane-spirv-emit/tests/support/atomic_kernel.rs"]
-mod atomic_kernel;
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
-mod common;
-#[path = "../../vulkane-spirv-emit/tests/support/flow_kernel.rs"]
-mod flow_kernel;
-#[path = "support/glslang.rs"]
-mod glslang;
-#[path = "../../vulkane-spirv-emit/tests/support/gpu.rs"]
-mod gpu;
-#[path = "../../vulkane-spirv-emit/tests/support/grid_kernel.rs"]
-mod grid_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/private_kernel.rs"]
-mod private_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/reverse_kernel.rs"]
-mod reverse_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/subgroup_kernel.rs"]
-mod subgroup_kernel;
+use vulkane_test_support::atomic_kernel;
+use vulkane_test_support::common;
+use vulkane_test_support::flow_kernel;
+use vulkane_test_support::glslang;
+use vulkane_test_support::gpu;
+use vulkane_test_support::grid_kernel;
+use vulkane_test_support::private_kernel;
+use vulkane_test_support::reverse_kernel;
+use vulkane_test_support::subgroup_kernel;
 
 use glslang::{glslang_words, validates};
 use unpopped::backend::{Backend, GeneratedKernel, LowerError};
@@ -43,7 +33,7 @@ fn reverse(with_barrier: bool) -> GeneratedKernel {
     lower(&reverse_kernel::reverse(
         WORKGROUP_SIZE,
         with_barrier,
-        false,
+        reverse_kernel::SharedLen::Static,
     ))
 }
 
@@ -225,7 +215,11 @@ fn a_block_reversed_through_a_specialization_sized_array_is_exact_on_a_device() 
     let Some(gpu) = gpu::Gpu::open("glsl_kernel_dynamic") else {
         return;
     };
-    let k = lower(&reverse_kernel::reverse(WORKGROUP_SIZE, true, true));
+    let k = lower(&reverse_kernel::reverse(
+        WORKGROUP_SIZE,
+        true,
+        reverse_kernel::SharedLen::Spec,
+    ));
     assert!(k.source.contains("layout(constant_id = 2)"), "{}", k.source);
     let Some(words) = glslang_words(&k) else {
         return;
@@ -273,16 +267,18 @@ fn a_constant_allocation_is_a_typed_decline() {
 fn what_the_walker_does_not_lower_is_a_typed_decline_naming_it() {
     use unpopped::exec::{Extent, Scope};
     use unpopped::kernel::{BarrierKind, Stmt};
-    let mut f = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut f = reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     f.compute = unpopped_vocab::ElementKind::Bf16;
     declined(&f, "integer kernels only");
 
     // A dynamic extent from a local that no scalar parameter declares: `check_kernel` refuses it.
-    let mut dynamic = reverse_kernel::reverse(WORKGROUP_SIZE, true, true);
+    let mut dynamic =
+        reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Spec);
     dynamic.allocs[0].extent = Extent::Param(1);
     declined(&dynamic, "AllocExtent");
 
-    let mut device = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut device =
+        reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     device.body.0.insert(
         3,
         Stmt::Barrier {
@@ -292,7 +288,7 @@ fn what_the_walker_does_not_lower_is_a_typed_decline_naming_it() {
     );
     declined(&device, "Barrier");
 
-    let mut grid = reverse_kernel::reverse(WORKGROUP_SIZE, true, false);
+    let mut grid = reverse_kernel::reverse(WORKGROUP_SIZE, true, reverse_kernel::SharedLen::Static);
     grid.body.0.push(Stmt::GridDepWait);
     declined(&grid, "GridDepWait");
 }

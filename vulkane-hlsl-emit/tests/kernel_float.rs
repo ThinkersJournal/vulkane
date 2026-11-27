@@ -6,8 +6,7 @@
 //! can spell it, the pin test fails and the arm can be written. Without `dxc` the pin test follows
 //! `VULKANE_REQUIRE_DXC`.
 
-#[path = "../../vulkane-spirv-emit/tests/support/reverse_kernel.rs"]
-mod reverse_kernel;
+use vulkane_test_support::reverse_kernel;
 
 use std::process::Command;
 
@@ -86,8 +85,12 @@ fn a_float_kernel_is_a_typed_decline_naming_the_missing_float_control() {
         }
     }
     // Control: an integer kernel still lowers, so the decline is the float type.
-    Hlsl.lower_kernel(&reverse_kernel::reverse(WORKGROUP_SIZE, true, false))
-        .expect("an integer kernel lowers");
+    Hlsl.lower_kernel(&reverse_kernel::reverse(
+        WORKGROUP_SIZE,
+        true,
+        reverse_kernel::SharedLen::Static,
+    ))
+    .expect("an integer kernel lowers");
 }
 
 const PROBE: &str = r#"

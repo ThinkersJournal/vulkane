@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copied from `unpopped-cpu-c` 0.43.2 `tests/support/cc.rs` (same author, MIT OR Apache-2.0; test-only, not
-// packaged: Cargo.toml `include` omits `tests/`). Changes: this note, the `allow` below, and `compile`
+// packaged: Cargo.toml `include` omits `tests/`). Changes: this note and `compile`
 // split into `compile_vcvars` / `compile_direct` (same commands, for the complexity gate).
 //! Host C compiler discovery and driving, shared by the compile-and-run tests
 //! (moved verbatim from `cpu_end_to_end.rs` so the kernel-layer differential can use it).
-#![allow(dead_code)]
-
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// A host C compiler and how to drive it.
-pub(crate) struct CCompiler {
+pub struct CCompiler {
     /// Base command, already carrying whatever environment it needs (the MSVC
     /// tool from `cc`'s registry lookup carries INCLUDE/LIB; a PATH `cc` does not
     /// need any).
@@ -43,7 +41,7 @@ pub(crate) struct CCompiler {
 /// perfectly good toolchain sitting in Program Files. A test that cannot run
 /// where it is written is not a test there, and one that says `ok` while doing
 /// so is worse than one that fails.
-pub(crate) fn find_compiler() -> Option<CCompiler> {
+pub fn find_compiler() -> Option<CCompiler> {
     for (cmd, msvc) in [
         ("cc", false),
         ("gcc", false),
@@ -123,7 +121,7 @@ impl CCompiler {
     /// test passes trivially and proves nothing, because there is no optimizer to
     /// do the contracting. The value-correctness tests stay unoptimized so a
     /// failure there is unambiguously the emitter's rather than the compiler's.
-    pub(crate) fn compile(&self, src: &Path, exe: &Path, optimize: bool) -> Result<(), String> {
+    pub fn compile(&self, src: &Path, exe: &Path, optimize: bool) -> Result<(), String> {
         // A `vcvars` install has to be entered through `cmd`, because the batch
         // file's whole job is to mutate the environment of the process that
         // calls it. Spawning `cl` directly after running it in a *different*

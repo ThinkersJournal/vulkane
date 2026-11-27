@@ -3,30 +3,10 @@
 //! atomic buffers existed. The goldens in `tests/golden/` were written by the emitter before the
 //! atomic typing change; `WGSL_GOLDEN_WRITE=1` rewrites them (only for a deliberate change).
 
-#[path = "../../vulkane-spirv-emit/tests/support/flow_kernel.rs"]
-#[allow(
-    dead_code,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod flow_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/grid_kernel.rs"]
-#[allow(
-    dead_code,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod grid_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/private_kernel.rs"]
-#[allow(
-    dead_code,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod private_kernel;
-#[path = "../../vulkane-spirv-emit/tests/support/reverse_kernel.rs"]
-#[allow(
-    dead_code,
-    reason = "shared test module: each test binary compiles it whole but uses part of it"
-)]
-mod reverse_kernel;
+use vulkane_test_support::flow_kernel;
+use vulkane_test_support::grid_kernel;
+use vulkane_test_support::private_kernel;
+use vulkane_test_support::reverse_kernel;
 
 use unpopped::backend::Backend;
 use unpopped::exec::MemorySpace;
@@ -37,9 +17,18 @@ use vulkane_wgsl_emit::Wgsl;
 fn kernels() -> Vec<(&'static str, KernelFn)> {
     let n = WORKGROUP_SIZE;
     vec![
-        ("reverse_barrier", reverse_kernel::reverse(n, true, false)),
-        ("reverse_racy", reverse_kernel::reverse(n, false, false)),
-        ("reverse_dynamic", reverse_kernel::reverse(n, true, true)),
+        (
+            "reverse_barrier",
+            reverse_kernel::reverse(n, true, reverse_kernel::SharedLen::Static),
+        ),
+        (
+            "reverse_racy",
+            reverse_kernel::reverse(n, false, reverse_kernel::SharedLen::Static),
+        ),
+        (
+            "reverse_dynamic",
+            reverse_kernel::reverse(n, true, reverse_kernel::SharedLen::Spec),
+        ),
         ("flow", flow_kernel::flow_kernel()),
         ("grid", grid_kernel::grid_kernel()),
         (

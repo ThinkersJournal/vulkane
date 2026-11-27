@@ -5,13 +5,9 @@
 //! The device is created with `shaderInt8`/`storageBuffer8BitAccess` or `shaderInt16`/
 //! `storageBuffer16BitAccess` as the type needs; without them a `SKIP (unsupported)` line names them.
 
-#[path = "../../vulkane/tests/common/mod.rs"]
-#[allow(dead_code, unreachable_pub, missing_docs)]
-mod common;
-#[path = "support/gpu.rs"]
-mod gpu;
-#[path = "support/narrow_kernel.rs"]
-mod narrow_kernel;
+use vulkane_test_support::common;
+use vulkane_test_support::gpu;
+use vulkane_test_support::narrow_kernel;
 
 use narrow_kernel::{THREADS, input_words, width};
 use unpopped::backend::Backend;
