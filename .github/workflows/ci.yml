@@ -477,6 +477,12 @@ jobs:
           test -n "$pinned"
           rustup toolchain install "$pinned" --profile minimal
           cargo "+$pinned" --version
+          # The pin also declares components (rustfmt, clippy). `--profile minimal` does not install them, so the FIRST plain
+          # `cargo` in the repo makes rustup install them on demand, and the harness starts several cargo calls at once: on #187's
+          # runner that failed with `failed to install component: 'rustfmt-preview-x86_64-unknown-linux-gnu', detected conflict:
+          # 'bin/cargo-fmt'` (exit 1 inside `cargo metadata`, stderr hidden by msrv_matrix.py). Install them ONCE, here, in one process.
+          rustup show active-toolchain
+          cargo --version
       # Provisioning is a SEPARATE step from the gate, deliberately. The harness
       # replays these commands locally, and a gate bundled with a `pip install`
       # makes a local verification depend on the network. Same category as the
