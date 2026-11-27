@@ -38,3 +38,26 @@ jobs:
           echo "msrv_matrix exit=$?"
           cat /tmp/m.err | head -20
           exit 0
+      - name: the WHOLE self-test, with a cargo shim that records every failing call's stderr
+        shell: bash
+        run: |
+          set +e
+          python3 -m pip install --quiet pyyaml
+          mkdir -p "$RUNNER_TEMP/shim"
+          cat > "$RUNNER_TEMP/shim/cargo" <<'SHIM'
+          #!/bin/bash
+          err="$(mktemp)"
+          "$HOME/.cargo/bin/cargo" "$@" 2> "$err"
+          rc=$?
+          cat "$err" >&2
+          if [ $rc -ne 0 ]; then { echo "=== cargo $* -> exit $rc (cwd $PWD)"; cat "$err"; } >> "$RUNNER_TEMP/cargo-failures.log"; fi
+          rm -f "$err"
+          exit $rc
+          SHIM
+          chmod +x "$RUNNER_TEMP/shim/cargo"
+          PATH="$RUNNER_TEMP/shim:$PATH" python3 .github/local_gates.py --self-test > "$RUNNER_TEMP/self.out" 2>&1
+          echo "self-test exit=$?"
+          echo "--- tail of self-test:"; tail -25 "$RUNNER_TEMP/self.out"
+          echo "--- failing cargo calls:"; cat "$RUNNER_TEMP/cargo-failures.log" 2>/dev/null || echo "(none recorded)"
+          exit 0
+
