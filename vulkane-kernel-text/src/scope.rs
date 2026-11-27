@@ -14,6 +14,8 @@ use crate::dialect::{Decl, Dialect, Layout};
 #[derive(Debug)]
 pub(crate) struct Scope {
     pub(crate) signed: bool,
+    /// An integer kernel holding 8- or 16-bit buffers or locals (a wrapping `Cast` reaches them).
+    pub(crate) narrow: bool,
     /// An `F32` or `F64` kernel (`signed` is then false and only used for the execution ids).
     pub(crate) float: bool,
     pub(crate) block: [u32; 3],
@@ -93,15 +95,35 @@ fn dtype(d: &dyn Dialect, kernel: &KernelFn) -> Result<(bool, bool), LowerError>
 /// Whether a buffer or local of type `elem` may appear in the kernel: the compute dtype, and in a
 /// float kernel the other float width and the 32-bit integers (the operands and results of a `Cast`).
 fn buffer_elem_ok(d: &dyn Dialect, kernel: &KernelFn, elem: ElementKind) -> bool {
+    let narrow_int = d.narrow_ints()
+        && matches!(kernel.compute, ElementKind::I32 | ElementKind::U32)
+        && matches!(
+            elem,
+            ElementKind::I8 | ElementKind::U8 | ElementKind::I16 | ElementKind::U16
+        );
     let other_float = matches!(kernel.compute, ElementKind::F32 | ElementKind::F64)
         && matches!(elem, ElementKind::F32 | ElementKind::F64);
     elem == kernel.compute
+        || narrow_int
         || (d.float()
             && matches!(
                 kernel.compute,
                 ElementKind::F32 | ElementKind::F64 | ElementKind::F16
             )
             && (other_float || matches!(elem, ElementKind::I32 | ElementKind::U32)))
+}
+
+/// The dialect's reason why an 8- or 16-bit integer `elem` has no spelling, phrased to follow a subject.
+fn narrow_reason(d: &dyn Dialect, elem: ElementKind) -> Option<String> {
+    if !matches!(
+        elem,
+        ElementKind::I8 | ElementKind::U8 | ElementKind::I16 | ElementKind::U16
+    ) || d.narrow_ints()
+    {
+        return None;
+    }
+    d.narrow_refusal()
+        .map(|why| format!("is a {elem:?}, an 8- or 16-bit integer: {why}"))
 }
 
 /// One buffer parameter, or a decline.
@@ -138,14 +160,25 @@ fn buffer(d: &dyn Dialect, kernel: &KernelFn, i: usize) -> Result<Decl, LowerErr
                 len_spec: None,
             })
         }
-        _ => Err(refuse(
-            d.name(),
-            kernel,
-            format!(
-                "parameter `{}` is not a flat buffer of the compute dtype",
-                p.name
-            ),
-        )),
+        _ => {
+            let narrow = match &p.kind {
+                ParamKind::Buffer { elem, .. } => narrow_reason(d, *elem),
+                _ => None,
+            };
+            Err(refuse(
+                d.name(),
+                kernel,
+                narrow.map_or_else(
+                    || {
+                        format!(
+                            "parameter `{}` is not a flat buffer of the compute dtype",
+                            p.name
+                        )
+                    },
+                    |why| format!("parameter `{}` {why}", p.name),
+                ),
+            ))
+        }
     }
 }
 
@@ -313,7 +346,10 @@ fn locals(d: &dyn Dialect, kernel: &KernelFn) -> Result<(), LowerError> {
         Some(i) => Err(refuse(
             d.name(),
             kernel,
-            format!("local {i} is not a scalar of the compute dtype"),
+            narrow_reason(d, kernel.locals[i].elem).map_or_else(
+                || format!("local {i} is not a scalar of the compute dtype"),
+                |why| format!("local {i} {why}"),
+            ),
         )),
         None => Ok(()),
     }
@@ -392,8 +428,17 @@ pub(crate) fn check(d: &dyn Dialect, kernel: &KernelFn) -> Result<Scope, LowerEr
     for decl in buffers.iter_mut().chain(shared.iter_mut()) {
         decl.atomic = atomic.contains(&decl.name);
     }
+    let is_narrow = |e: ElementKind| {
+        matches!(
+            e,
+            ElementKind::I8 | ElementKind::U8 | ElementKind::I16 | ElementKind::U16
+        )
+    };
+    let narrow = buffers.iter().any(|b| is_narrow(b.elem))
+        || kernel.locals.iter().any(|l| is_narrow(l.elem));
     Ok(Scope {
         signed,
+        narrow,
         float,
         block: launch.block,
         grid: launch.grid,

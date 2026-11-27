@@ -113,6 +113,18 @@ pub trait Dialect {
     fn float_refusal(&self) -> Option<&'static str> {
         None
     }
+    /// Why this dialect has no 8- or 16-bit integer buffers or locals at all, named in the decline of a
+    /// kernel that holds one (`None`: no reason beyond the generic one). Only asked of a dialect whose
+    /// [`Self::narrow_ints`] is false.
+    fn narrow_refusal(&self) -> Option<&'static str> {
+        None
+    }
+    /// Whether an `I32`/`U32` kernel may hold `I8`/`U8`/`I16`/`U16` buffers and locals (reached by a
+    /// wrapping `Cast`, spelled by [`Self::convert`]). The default is no: such a kernel is then a typed
+    /// decline naming the buffer.
+    fn narrow_ints(&self) -> bool {
+        false
+    }
     /// Whether this dialect instance lowers float kernels (`F32`, or `F64` when [`Self::double`]). The default is no: such a kernel is then a
     /// typed decline naming the dialect. A dialect that says yes spells [`Self::lit_float`],
     /// [`Self::float_unary`] and [`Self::float_minmax`], keeps every float add, subtract and multiply
