@@ -3,10 +3,13 @@
 
 pub mod atomic_kernel;
 pub mod atomic_wide_kernel;
+pub mod bf16_kernel;
 pub mod cases;
 pub mod cast_kernel;
 pub mod cc;
+pub mod collective_kernel;
 pub mod common;
+pub mod div_kernel;
 pub mod float_flow_kernel;
 pub mod float_kernel;
 pub mod flow_kernel;

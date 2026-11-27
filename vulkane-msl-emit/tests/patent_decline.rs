@@ -17,7 +17,8 @@ use unpopped::backend::{Backend, LowerError};
 use unpopped::exec::{AllocDecl, Extent, LaunchShape, MemorySpace, Scope};
 use unpopped::ir::{ReduceOp, ScalarExpr};
 use unpopped::kernel::{
-    Block, BufferRole, CollectiveKind, KernelFn, Param, Place, ShuffleMode, Stmt, VoteKind,
+    Block, BufferRole, CollectiveKind, KernelFn, LocalDecl, Param, Place, ShuffleMode, Stmt,
+    VoteKind,
 };
 use unpopped_vocab::ElementKind;
 use vulkane_msl_emit::Msl;
@@ -30,6 +31,22 @@ type Shape = (&'static str, Box<dyn Fn(Stmt) -> Vec<Stmt>>);
 
 fn u32c(v: u64) -> ScalarExpr {
     ScalarExpr::ConstInt(v as _, ElementKind::U32)
+}
+
+/// A shared `U32` element (the destination of a copy).
+fn tile() -> Place {
+    Place::Alloc {
+        alloc: 1,
+        index: u32c(0),
+    }
+}
+
+/// A global buffer element (the only source the checker admits for a copy).
+fn global() -> Place {
+    Place::Logical {
+        buffer: 0,
+        coords: vec![u32c(0)],
+    }
 }
 
 fn bar() -> Place {
@@ -49,16 +66,26 @@ fn kernel(body: Vec<Stmt>) -> KernelFn {
             BufferRole::ReadWrite,
             Some(1),
         )],
-        vec![],
+        // Two `U32` locals: the `For` variable and the collectives' results (the checker refuses an undeclared local).
+        vec![LocalDecl::scalar(ElementKind::U32); 2],
         Block(body),
     )
     .with_launch(LaunchShape::new([2, 1, 1], [1, 1, 1]));
-    k.allocs = vec![AllocDecl::new(
-        "bar",
-        MemorySpace::Shared,
-        ElementKind::U64,
-        Extent::Static(1),
-    )];
+    k.allocs = vec![
+        AllocDecl::new(
+            "bar",
+            MemorySpace::Shared,
+            ElementKind::U64,
+            Extent::Static(1),
+        ),
+        // The destination of the copies (the source is a global buffer place: the checker refuses any other).
+        AllocDecl::new(
+            "tile",
+            MemorySpace::Shared,
+            ElementKind::U32,
+            Extent::Static(4),
+        ),
+    ];
     k
 }
 
@@ -72,8 +99,8 @@ fn declined_434c() -> Vec<Case> {
             "CopyAsync",
             MARKER_434C,
             Stmt::CopyAsync {
-                dst: bar(),
-                src: bar(),
+                dst: tile(),
+                src: global(),
                 elems: 1,
                 valid: None,
                 cache: Default::default(),
@@ -102,7 +129,7 @@ fn declined_434c() -> Vec<Case> {
                     exclusive: false,
                 },
                 value: u32c(1),
-                result: 0,
+                result: 1,
                 scope: Scope::Subgroup,
             },
         ),
@@ -149,9 +176,9 @@ fn declined_ext() -> Vec<Case> {
             "CopyBulk",
             ext,
             Stmt::CopyBulk {
-                dst: bar(),
-                src: bar(),
-                elems: 1,
+                dst: tile(),
+                src: global(),
+                elems: 4,
                 bar: bar(),
             },
         ),
@@ -242,6 +269,11 @@ fn each_declined_statement_is_refused_by_name_at_every_depth() {
                 marker == MARKER_EXT || !detail.contains("extended"),
                 "{name}: a board 434 C refusal must not claim the extension: {detail}"
             );
+            // The refusal is the emitter's own table, not the kernel checker's (whose text can already name a construct).
+            assert!(
+                !detail.contains("check_kernel refused"),
+                "{name} at {where_}: the checker refused it, so the emitter's arm was not reached: {detail}"
+            );
             assert!(
                 detail.contains(&format!("Stmt::{name}")) && detail.contains(marker),
                 "{name} at {where_}: the refusal must name it and carry the marker, got: {detail}"
@@ -324,7 +356,7 @@ fn only_the_kinds_outside_the_ruled_set_are_refused_by_name_whatever_msl_functio
         let stmt = Stmt::Collective {
             kind: kind.clone(),
             value: u32c(1),
-            result: 0,
+            result: 1,
             scope: Scope::Subgroup,
         };
         for (shape, wrap) in shapes() {
@@ -341,6 +373,10 @@ fn only_the_kinds_outside_the_ruled_set_are_refused_by_name_whatever_msl_functio
                 let Err(LowerError::UnsupportedKernel { detail }) = result else {
                     panic!("{kind:?} (MSL {msl_fn}) at {shape} must be refused");
                 };
+                assert!(
+                    !detail.contains("check_kernel refused"),
+                    "{kind:?} at {shape}: the checker refused it: {detail}"
+                );
                 assert!(
                     detail.contains("Stmt::Collective") && detail.contains(MARKER_434C),
                     "{kind:?} (MSL {msl_fn}) at {shape}: {detail}"
@@ -372,5 +408,50 @@ fn a_ruled_kind_over_a_block_is_refused_by_name() {
             detail.contains("Stmt::Collective") && detail.contains(MARKER_434C),
             "{kind:?} (MSL {msl_fn}) over a Block: {detail}"
         );
+    }
+}
+
+/// The probe kernels must pass the kernel checker, at every nesting depth, so a refusal can only be the emitter's table
+/// (see the SPIR-V, GLSL, HLSL and WGSL suites). Exceptions: a statement whose combine function only a module can resolve
+/// (`CollectiveTuple`, and `Collective` with `ReduceWith`/`ScanWith`): the test pins that this is the ONLY reason.
+#[test]
+fn every_probe_kernel_passes_the_kernel_checker() {
+    let module_only = |checked: &Result<(), unpopped::kernel::KernelError>| {
+        format!("{checked:?}").contains("outside a module")
+    };
+    for (name, _, stmt) in declined() {
+        for (where_, build) in shapes() {
+            let checked = unpopped::kernel::check_kernel(&kernel(build(stmt.clone())));
+            if name == "CollectiveTuple" {
+                assert!(module_only(&checked), "{name} at {where_}: {checked:?}");
+            } else {
+                assert!(checked.is_ok(), "{name} at {where_}: {checked:?}");
+            }
+        }
+    }
+    for (msl_fn, kind) in every_collective_kind() {
+        let user_combine = matches!(
+            kind,
+            CollectiveKind::ReduceWith { .. } | CollectiveKind::ScanWith { .. }
+        );
+        // (unpopped before 0.60 refused a product fold in the checker, so it needed its own arm here; the checker at the taken
+        // 0.60.26 accepts it, and board 506 A lowers it, so a product is checked like every other kind.)
+        let stmt = Stmt::Collective {
+            kind: kind.clone(),
+            value: u32c(1),
+            result: 1,
+            scope: Scope::Subgroup,
+        };
+        for (shape, wrap) in shapes() {
+            let checked = unpopped::kernel::check_kernel(&kernel(wrap(stmt.clone())));
+            if user_combine {
+                assert!(module_only(&checked), "{kind:?} at {shape}: {checked:?}");
+            } else {
+                assert!(
+                    checked.is_ok(),
+                    "{kind:?} (MSL {msl_fn}) at {shape}: {checked:?}"
+                );
+            }
+        }
     }
 }

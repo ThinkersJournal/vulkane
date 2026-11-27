@@ -12,8 +12,8 @@ use unpopped::kernel::{KernelFn, Stmt};
 use unpopped_vocab::ElementKind;
 use vulkane_msl_emit::Msl;
 use vulkane_test_support::{
-    atomic_kernel, float_kernel, flow_kernel, grid_kernel, narrow_kernel, private_kernel,
-    reverse_kernel, subgroup_kernel, vector_kernel, wide_kernel,
+    atomic_kernel, atomic_wide_kernel, float_kernel, flow_kernel, grid_kernel, narrow_kernel,
+    private_kernel, reverse_kernel, subgroup_kernel, vector_kernel, wide_kernel,
 };
 
 const BLOCK: u32 = 64;
@@ -155,18 +155,30 @@ fn a_fence_is_spelled_at_block_and_device_scope_and_collapses_to_seq_cst() {
 fn what_is_not_spelled_is_declined_by_name() {
     // Floats, 64-bit, atomics, subgroup ids, a scalar parameter and an out-of-scope barrier.
     // (An `F32` kernel lowers; Metal has no `double`, so `F64` is declined.)
-    let float = decline(&float_kernel::float_kernel(
-        ElementKind::F64,
-        float_kernel::Case::MulAdd,
-    ));
-    assert!(float.contains("msl"), "{float}");
-    let sqrt = decline(&float_kernel::float_kernel(
-        ElementKind::F32,
-        float_kernel::Case::Sqrt,
-    ));
-    assert!(sqrt.contains("msl"), "{sqrt}");
-    let wide = decline(&wide_kernel::wide_kernel(ElementKind::I64));
-    assert!(wide.contains("msl"), "{wide}");
+    // The shared float kernel is named `float`, an MSL type: it must be renamed (`float_k`) or the refusal below would be the
+    // reserved-name decline and these two assertions would pass for the wrong reason (they did, before the audit).
+    let float = decline(&float_k(ElementKind::F64, float_kernel::Case::MulAdd));
+    assert!(
+        float.contains("compute dtype is F64")
+            && !float.contains("keyword")
+            && !float.contains("check_kernel refused"),
+        "{float}"
+    );
+    let sqrt = decline(&float_k(ElementKind::F32, float_kernel::Case::Sqrt));
+    assert!(
+        sqrt.contains("unary op Sqrt is not lowered in msl") && !sqrt.contains("keyword"),
+        "{sqrt}"
+    );
+    // A 64-bit atomic is declined by name with the measured reason (Apple rejects every `atomic_ulong` operation).
+    for ty in [ElementKind::I64, ElementKind::U64] {
+        let a = decline(&atomic_wide_kernel::atomic_wide_kernel(ty, false));
+        assert!(
+            a.contains("64-bit atomic") && a.contains("atomic_ulong"),
+            "{a}"
+        );
+        // From the emitter's own pre-check, not the kernel checker (whose text could already name the construct).
+        assert!(!a.contains("check_kernel refused"), "{a}");
+    }
     let cluster = decline(&exec_kernel(ExecId::DeviceRank));
     assert!(cluster.contains("DeviceRank"), "{cluster}");
     let scalar = decline(&reverse_kernel::reverse(
@@ -180,7 +192,12 @@ fn what_is_not_spelled_is_declined_by_name() {
         scope: Scope::Device,
         kind: unpopped::kernel::BarrierKind::Full,
     });
-    assert!(decline(&device).contains("msl"));
+    let d = decline(&device);
+    assert!(
+        d.contains("`Stmt::Barrier` at this scope or kind has no msl spelling")
+            && !d.contains("check_kernel refused"),
+        "{d}"
+    );
 }
 
 #[test]
@@ -516,4 +533,98 @@ fn masked_access_is_an_if_around_the_access_and_the_fill_is_the_else_branch() {
 fn the_plan_path_is_declined() {
     assert_eq!(Msl.name(), "msl");
     assert_eq!(Msl.provider(), "vulkane");
+}
+
+#[test]
+fn every_float_width_pins_safe_math_and_tests_nan_with_isnan_never_self_inequality() {
+    // Metal compiles with fast math ON by default (no NaNs: `x != x` may be folded away). Every float
+    // width goes through the one `MslFloat` dialect prologue, so each opens with the safe-math pragma, and the
+    // NaN-propagating max/min test NaN with `isnan` (defined under safe math), never with `x != x`.
+    use float_kernel::Case;
+    for ty in [ElementKind::F32, ElementKind::F16, ElementKind::Bf16] {
+        for case in [Case::MulAdd, Case::Max, Case::Min, Case::Floor] {
+            let src = text(&float_k(ty, case));
+            assert!(
+                src.contains("#pragma METAL fp math_mode(safe)"),
+                "{ty:?}: {src}"
+            );
+            assert!(
+                src.contains("#pragma METAL fp contract(off)"),
+                "{ty:?}: {src}"
+            );
+            if matches!(case, Case::Max | Case::Min) {
+                assert!(src.contains("isnan("), "{ty:?} {case:?}: {src}");
+            }
+            for l in src.lines() {
+                // A self-comparison `x != x` is the fast-math-foldable NaN test.
+                let l = l.trim();
+                if let Some((a, rest)) = l.split_once(" != ") {
+                    let a = a.rsplit(['(', ' ']).next().unwrap_or("");
+                    assert!(
+                        !rest.starts_with(a) || a.is_empty(),
+                        "{ty:?}: self-inequality NaN test in {l}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_64_bit_integer_kernel_is_spelled_long_and_ulong_with_wide_literals_and_a_total_div() {
+    for (ty, long, lit) in [
+        (ElementKind::I64, "long", "(-9223372036854775807l - 1l)"),
+        (ElementKind::U64, "ulong", "ul"),
+    ] {
+        let mut k = wide_kernel::wide_kernel(ty);
+        k.name = "wide_case".to_string();
+        let src = text(&k);
+        assert!(src.contains(&format!("device {long}* b0")), "{ty:?}: {src}");
+        assert!(src.contains(&format!("{long} l0 = ")), "{ty:?}: {src}");
+        assert!(src.contains(lit), "{ty:?}: {src}");
+        // The shift count is masked to 6 bits, not 5 (`<< 99` must be `<< 35`).
+        assert!(
+            src.contains(&format!(
+                "& {}",
+                if ty == ElementKind::I64 {
+                    "63l"
+                } else {
+                    "63ul"
+                }
+            )),
+            "{ty:?}: {src}"
+        );
+        // A zero divisor gives the dividend: the division is guarded, never a bare `/`.
+        assert!(src.contains("== 0") && src.contains(" / "), "{ty:?}: {src}");
+        assert!(
+            !src.contains("int l") && !src.contains("uint l"),
+            "{ty:?}: no 32-bit local: {src}"
+        );
+    }
+}
+
+/// A fence at a scope MSL has no form for (cluster) is declined by name, never approximated by a device fence; found by an
+/// audit mutant that spelled every scope and passed every suite. The kernel passes the kernel checker.
+#[test]
+fn a_cluster_scope_fence_is_declined_by_the_dialect() {
+    use unpopped::kernel::{MemoryOrder, check_kernel};
+    let mut k = reverse(true);
+    k.launch = k.launch.map(|mut l| {
+        l.grid = [2, 1, 1];
+        l.cluster = Some([2, 1, 1]);
+        l
+    });
+    k.body.0.insert(
+        3,
+        Stmt::Fence {
+            scope: Scope::Cluster,
+            order: MemoryOrder::SeqCst,
+        },
+    );
+    assert!(check_kernel(&k).is_ok(), "{:?}", check_kernel(&k));
+    let d = decline(&k);
+    assert!(
+        d.contains("Fence") && !d.contains("check_kernel refused"),
+        "{d}"
+    );
 }
