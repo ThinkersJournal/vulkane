@@ -34,9 +34,9 @@ So the three rules to match are: **`Popc` counts set bits of the `w`-bit pattern
 
 **HLSL.** The kernel dialect reaches HLSL through `fishstringer-slang-emit` (plain HLSL entry pending); `countbits`, `firstbithigh` and `reversebits` are not read here. **Not read.**
 
-## 3. Patent wording (relayed; this lane has not read the source section)
+## 3. Patent wording (RELAYED; not read by this lane)
 
-From pm-kernels' task (2026-11-27), to be used if a statement is made: **`Popc` and `Brev`: "outside as read"; `Clz`: "no patent found in N queries: not a clearance; no packed/vector clz"** (the source is named "patents-2 section 8"; this lane did not find that document and does not know N, so a quote of N waits for it). Nothing here is a clearance, there is no attorney, and findings are not advice.
+**RELAYED by pm-kernels from unpopped-patents-2 (branch `lane/patents-2-tex@c1cc226c`, section 8, not yet on main):** `Popc`: outside as read (US20150046672A1, US5717616A). `Brev`: outside as read (US7640284B1, US9268744B2). `Clz`: one hit, Intel US9372692B2 (packed vector clz: the scalar is outside as read; **no packed/vector clz**), and no other patent found. Findings, not advice; not a clearance; no attorney. This lane has not read those sections (they are on a branch, with no PR yet: a docs slot is pending), so the numbers above are relayed, not verified here; the RELAYED marker stays until the charts are on main.
 
 ## 4. What the take PR owes (rows, none started)
 
