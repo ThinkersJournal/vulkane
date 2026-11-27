@@ -516,7 +516,7 @@ struct RawCase {
 fn raw_cases() -> Vec<RawCase> {
     let fill = 0xAAAA_AAAA_AAAA_AAAAu64;
     let max_base = 0xBBBB_BBBB_0000_0000u64;
-    vec![RawCase {
+    let mut v = vec![RawCase {
         name: "raw_atomic_ulong_max_min",
         source: String::from("// Hand-written (not emitted): MSL 4.1 6.16.4.6 atomic modify functions on atomic_ulong.
 #include <metal_stdlib>
@@ -555,40 +555,61 @@ kernel void au_minmax(
             Ok(())
         }),
     },
-    float_collective_measure(),
-    float_collective_mutant(),
-    ]
+    ];
+    v.push(float_collective_measure());
+    v.extend(float_collective_mutants());
+    v
 }
 
-/// The vacuity mutant of the float Max case: the SAME lowered kernel with the NaN select removed (a bare `simd_max`). On the device
-/// `simd_max` ignores a NaN lane (measured, vulkane#189), so this must be REJECTED by the comparator; the case passes only if it is.
-fn float_collective_mutant() -> RawCase {
+/// The vacuity mutants of the float Max case: the SAME lowered kernel with the NaN wrapper damaged, each of which the comparator must
+/// REJECT BY VALUE on the device (the case passes only if it does): (1) the select removed (a bare `simd_max`, which ignores a NaN lane,
+/// measured on #189); (2) the indicator sum removed (a per-lane indicator: only a NaN lane itself would answer NaN); (3) `> 0.0f`
+/// miscounted as `> 1.0f` (a single NaN in a subgroup is not seen).
+fn float_collective_mutants() -> Vec<RawCase> {
     let kind = unpopped::kernel::CollectiveKind::Reduce(unpopped::ir::ReduceOp::Max);
     let g = Msl
         .lower_kernel(&float_collective_kernel::kernel(kind.clone()))
         .expect("the float Max kernel lowers");
-    let good = "select(simd_max(l0), NAN, simd_any(isnan(l0)))";
+    let good = "select(simd_max(l0), NAN, simd_sum(isnan(l0) ? 1.0f : 0.0f) > 0.0f)";
     assert!(g.source.contains(good), "{}", g.source);
-    let source = g.source.replace(good, "simd_max(l0)");
-    assert_ne!(source, g.source);
-    RawCase {
-        name: "raw_float_collective_max_vs_no_nan_select",
-        source,
-        entry: "fcollective",
-        inputs: vec![float_collective_kernel::input()],
-        block: [float_collective_kernel::BLOCK, 1, 1],
-        grid: [1, 1, 1],
-        out_cells: float_collective_kernel::BLOCK as usize,
-        refusal_is_a_note: false,
-        check: Box::new(
-            move |o| {
-                match float_collective_kernel::check(&kind, &o.words) {
-            Err(_) => Ok(()),
-            Ok(()) => Err("the mutant (no NaN select) was NOT rejected: the comparator does not discriminate".to_string()),
-        }
-            },
+    let mutants = [
+        ("raw_float_collective_max_vs_no_nan_select", "simd_max(l0)"),
+        (
+            "raw_float_collective_max_vs_no_indicator_sum",
+            "select(simd_max(l0), NAN, (isnan(l0) ? 1.0f : 0.0f) > 0.0f)",
         ),
-    }
+        (
+            "raw_float_collective_max_vs_miscount",
+            "select(simd_max(l0), NAN, simd_sum(isnan(l0) ? 1.0f : 0.0f) > 1.0f)",
+        ),
+    ];
+    mutants
+        .into_iter()
+        .map(|(name, bad)| {
+            let source = g.source.replace(good, bad);
+            assert_ne!(source, g.source, "{name}: the mutation did not apply");
+            let kind = kind.clone();
+            RawCase {
+                name,
+                source,
+                entry: "fcollective",
+                inputs: vec![float_collective_kernel::input()],
+                block: [float_collective_kernel::BLOCK, 1, 1],
+                grid: [1, 1, 1],
+                out_cells: float_collective_kernel::BLOCK as usize,
+                refusal_is_a_note: false,
+                check: Box::new(
+                    move |o| match float_collective_kernel::check(&kind, &o.words) {
+                        Err(_) => Ok(()),
+                        Ok(()) => Err(
+                            "the mutant was NOT rejected: the comparator does not discriminate"
+                                .to_string(),
+                        ),
+                    },
+                ),
+            }
+        })
+        .collect()
 }
 
 /// The scenarios of the float-collective MEASURE-ONLY probe: per lane `l` of one 32-lane subgroup, the bit pattern each of

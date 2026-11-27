@@ -270,7 +270,7 @@ fn an_f32_kernel_lowers_sum_max_and_min_with_the_nan_select_on_max_and_min() {
     assert!(sum.contains("#pragma METAL fp math_mode(safe)"), "{sum}");
     for (op, f) in [(ReduceOp::Max, "simd_max"), (ReduceOp::Min, "simd_min")] {
         let s = source(&float_kernel(CollectiveKind::Reduce(op)));
-        let want = format!("l1 = select({f}(l0), NAN, simd_any(isnan(l0)));");
+        let want = format!("l1 = select({f}(l0), NAN, simd_sum(isnan(l0) ? 1.0f : 0.0f) > 0.0f);");
         assert!(
             s.contains(&want),
             "{op:?}: expected `{want}` in:
