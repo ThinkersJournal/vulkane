@@ -14,8 +14,8 @@ readme       = "README.md"
 include      = ["src/**", "README.md", "LICENSE-*"]
 
 [dependencies]
-unpopped       = "~0.59.1"
-unpopped-vocab = "~0.59.1"
+unpopped       = "~0.60.1"
+unpopped-vocab = "~0.60.1"
 
 [lints.rust]
 missing_docs                  = "deny"

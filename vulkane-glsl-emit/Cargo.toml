@@ -14,13 +14,13 @@ readme       = "README.md"
 include      = ["src/**", "README.md", "LICENSE-*"]
 
 [dependencies]
-unpopped       = "~0.59.1"
-unpopped-vocab = "~0.59.1"
+unpopped       = "~0.60.1"
+unpopped-vocab = "~0.60.1"
 vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.29" }
 
 [dev-dependencies]
 # The published decline fixtures (ROADMAP 9h): one checker-valid kernel or module per `Stmt` variant.
-unpopped = { version = "~0.59.1", features = ["fixtures"] }
+unpopped = { version = "~0.60.1", features = ["fixtures"] }
 # The live-device test opens a device through the safe wrapper (and its shared `tests/common`).
 vulkane = { path = "../vulkane" }
 vulkane-spirv-emit = { path = "../vulkane-spirv-emit" }

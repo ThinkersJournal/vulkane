@@ -427,15 +427,15 @@ checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 
 [[package]]
 name = "fishstringer-kernels-source"
-version = "0.8.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58276a124238f6f0c68bf39221b0ebb6f57699c1894162766c754eedd43b8010"
+checksum = "0fc8e76c78ce400a2a37ee891a1dbfc6bf7435e2efea9d6f76083bd839981d67"
 
 [[package]]
 name = "fishstringer-slang-emit"
-version = "0.8.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7caba9dad7d20ec2a28483c7084bed8b1e6a63f8b1bcbb24a817d8692921c5f8"
+checksum = "23ad41b6e1980ab8862363c4bd842d4cd2ad825faba2981659e66a04ed137031"
 dependencies = [
  "kiss-vulkan-vocab 0.6.0",
  "unpopped",
@@ -444,9 +444,9 @@ dependencies = [
 
 [[package]]
 name = "fishstringer-slang-parse"
-version = "0.8.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51733385c050850eb1d99f18a58856f3f9a5046ef4db161e1e43ef48dc5b43a1"
+checksum = "9cabb5b60c053b685de8b4530c5af27e2163fea0869e1d928100cf2a7431a40c"
 dependencies = [
  "tree-sitter",
  "tree-sitter-slang",
@@ -1972,9 +1972,9 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "unpopped"
-version = "0.59.1"
+version = "0.60.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "322b38f281413f5918f8589a0bda63df2f4cfd8e3fdde1541f400a3f04abf95d"
+checksum = "d8d1ab9e230ac45e8b841f39bb8163c290abaf5abb67d1a99bf41bd6a654fa9c"
 dependencies = [
  "libm",
  "serde",
@@ -1984,9 +1984,9 @@ dependencies = [
 
 [[package]]
 name = "unpopped-convert"
-version = "0.59.1"
+version = "0.60.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e10bb9d92ed37f1a7f8e7ba867edb82bc7170caf7f5c0af4f7fa884baa0aec5c"
+checksum = "35fed3e70a25ff2b7adda7085fbb76387dfd8ad2e7355bb407fb8ccb20bc30ea"
 dependencies = [
  "tree-sitter",
  "unpopped",
@@ -1995,9 +1995,9 @@ dependencies = [
 
 [[package]]
 name = "unpopped-cpu-c"
-version = "0.59.1"
+version = "0.60.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9361f634cbb7ed2e2fdcb63ac249d2c4de498f54f0f263a3d2612b010f741f98"
+checksum = "734211843fa4686d0bf2df59dc668e50dabbeab599dfcb04c6fac90fd7d257ab"
 dependencies = [
  "unpopped",
  "unpopped-vocab",
@@ -2005,9 +2005,9 @@ dependencies = [
 
 [[package]]
 name = "unpopped-vocab"
-version = "0.59.1"
+version = "0.60.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4cc6fbee491356534d29253650735d874ea5ee9d4c4082a0477566cd00a536f"
+checksum = "cfeae2c453b5fd463d3c32f008e6cf06fb696eefa62bbecde2424827f891e0ae"
 dependencies = [
  "float8",
  "half",
