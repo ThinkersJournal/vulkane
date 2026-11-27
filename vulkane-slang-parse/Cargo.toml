@@ -1,6 +1,6 @@
 [package]
 name         = "vulkane-slang-parse"
-version      = "0.30.7"
+version      = "0.30.6"
 edition      = "2024"
 rust-version = "1.90"
 authors      = ["Eric Evans <CireSnave@gmail.com>"]
