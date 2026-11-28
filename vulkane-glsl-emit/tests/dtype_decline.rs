@@ -36,12 +36,16 @@ fn place() -> Place {
     }
 }
 
-/// The wide integers: computed by unpopped since 0.62 (ROADMAP E2), so the CHECKER no longer declines them and each emitter's own
-/// dtype gate must.
+/// The dtypes the CHECKER computes since unpopped 0.62 (the four wide integers, ROADMAP E2) and 0.64 (`F128`, the soft binary128 of E3),
+/// so it no longer declines them and each emitter's own dtype gate must.
 fn is_wide(t: ElementKind) -> bool {
     matches!(
         t,
-        ElementKind::I128 | ElementKind::U128 | ElementKind::I256 | ElementKind::U256
+        ElementKind::I128
+            | ElementKind::U128
+            | ElementKind::I256
+            | ElementKind::U256
+            | ElementKind::F128
     )
 }
 
