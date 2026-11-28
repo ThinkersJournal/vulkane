@@ -184,6 +184,10 @@ impl W<'_> {
             Stmt::Break => self.emit("break;"),
             Stmt::Continue => self.emit("continue;"),
             Stmt::Return => self.emit("return;"),
+            // U50 (unpopped 0.64): `Assume` is a pure value fact (undefined behaviour on a device when false, so omitting it
+            // cannot change defined behaviour) and the migration note lets an emitter ignore it. Emitting nothing keeps every
+            // kernel a front end gives a `multiple_of` fact; a hint is a later row, after the target's documented hint is read.
+            Stmt::Assume { .. } => Ok(()),
             other => Err(self.no(format!(
                 "`Stmt::{}` is not lowered (v1: Let, Load, Assign, Store, MaskedLoad, MaskedStore, Barrier, Fence, atomics where the dialect spells them, control flow){}",
                 stmt_name(other),

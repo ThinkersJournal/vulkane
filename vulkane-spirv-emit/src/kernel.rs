@@ -332,6 +332,9 @@ impl Kc<'_> {
             | Stmt::Break
             | Stmt::Continue
             | Stmt::Return => self.flow(s),
+            // U50 (unpopped 0.64): omitted, as in the shared walker. `OpAssumeTrueKHR` needs `SPV_KHR_expect_assume`, which
+            // this emitter does not enable; a hint is a later row, after the extension's documented use is read.
+            Stmt::Assume { .. } => Ok(()),
             other => Err(refuse(
                 self.kernel,
                 format!(

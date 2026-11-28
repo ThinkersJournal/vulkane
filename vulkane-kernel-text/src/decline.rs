@@ -127,6 +127,7 @@ fn nested(stmt: &Stmt, lift: bool) -> Option<Declined> {
         | Stmt::GridDepLaunchDependents
         | Stmt::ProxyFence { .. }
         | Stmt::Fence { .. }
+        | Stmt::Assume { .. }
         | Stmt::Mma { .. }
         | Stmt::TileLoad { .. }
         | Stmt::TileMma { .. }
