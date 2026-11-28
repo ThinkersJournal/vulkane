@@ -53,7 +53,7 @@
 //! # }
 //! ```
 
-use crate::raw::bindings::{VkComponentTypeKHR, VkPhysicalDeviceFeatures};
+use crate::raw::bindings::{VkComponentTypeKHR, VkPhysicalDeviceFeatures, VkScopeKHR};
 use crate::safe::{
     PhysicalDevice, ShaderArithmeticFeatures, ShaderAtomicFeatures, SubgroupFeatureFlags,
 };
@@ -87,7 +87,8 @@ pub struct DeviceCapabilities {
     /// there, not a failure.
     pub coopvec: Vec<CoopVecCombo>,
     /// Raw `VkComponentTypeKHR` identifiers the device reported that vocabulary 6 does not
-    /// name, as `vulkan:component_type:<n>` strings (sorted, unique). Each tuple holding one
+    /// name, as `vulkan:component_type:<n>` strings (sorted, unique), followed by every `VkScopeKHR` of a
+    /// cooperative-matrix entry that is NOT subgroup scope, as `vulkan:scope:<n>` strings (V-18; sorted by `n`, unique). Each tuple holding one
     /// is omitted whole from every token (V-7: there is no `x<n>` escape), so the token
     /// under-claims; this is the Announce `unnamed_types` record (KISS-ANNOUNCE-6.6-0011)
     /// that keeps the omission visible. Empty when every reported type is named.
@@ -231,26 +232,35 @@ impl DeviceCapabilities {
         // support — wrong bytes for a real device, and under §6.8-0002 a
         // different cell rather than a degraded one. Declining to derive is the
         // honest outcome; the caller already handles `None`.
-        let mut coop: Vec<CoopShape> = physical
+        let entries: Vec<(CoopShape, i32)> = physical
             .cooperative_matrix_properties()
             .ok()?
             .iter()
-            .map(|p| CoopShape {
-                m: p.m_size(),
-                n: p.n_size(),
-                k: p.k_size(),
-                // Deliberately the `_raw` accessors. `component` maps an
-                // unrecognized value to `ComponentType::Other(n)`, which needs
-                // `n`; going through the checked accessor would collapse every
-                // unknown type to `None` and lose the number that distinguishes
-                // them; the number is what `unnamed_types` reports.
-                a: component(p.a_type_raw() as u32),
-                b: component(p.b_type_raw() as u32),
-                c: component(p.c_type_raw() as u32),
-                result: component(p.result_type_raw() as u32),
-                saturating: p.saturating_accumulation(),
+            .map(|p| {
+                (
+                    CoopShape {
+                        m: p.m_size(),
+                        n: p.n_size(),
+                        k: p.k_size(),
+                        // Deliberately the `_raw` accessors. `component` maps an
+                        // unrecognized value to `ComponentType::Other(n)`, which needs
+                        // `n`; going through the checked accessor would collapse every
+                        // unknown type to `None` and lose the number that distinguishes
+                        // them; the number is what `unnamed_types` reports.
+                        a: component(p.a_type_raw() as u32),
+                        b: component(p.b_type_raw() as u32),
+                        c: component(p.c_type_raw() as u32),
+                        result: component(p.result_type_raw() as u32),
+                        saturating: p.saturating_accumulation(),
+                    },
+                    p.scope_raw(),
+                )
             })
             .collect();
+        // V-18 (KISS 0.24.5): a `cm-` tuple names a SUBGROUP-scope shape. An entry of any other scope is omitted whole and its
+        // scope is reported below, so the token under-claims and the omission is visible; before this, every scope was spelled
+        // as if it were a subgroup tuple.
+        let (mut coop, omitted_scopes) = subgroup_shapes(entries);
         // Driver report order is not guaranteed stable across drivers or even
         // across calls, and the token must be byte-identical either way.
         coop.sort();
@@ -279,7 +289,10 @@ impl DeviceCapabilities {
             .collect();
         coopvec.sort();
         coopvec.dedup();
-        let unnamed_types = kiss_vulkan_vocab::unnamed_types(&coop, &coopvec);
+        // The component types are reported for the shapes that stay (an omitted entry is omitted whole: its types are not
+        // reported, its scope is), then the omitted scopes.
+        let mut unnamed_types = kiss_vulkan_vocab::unnamed_types(&coop, &coopvec);
+        unnamed_types.extend(omitted_scopes);
 
         Some(Self {
             default_subgroup: sg.subgroup_size,
@@ -420,6 +433,37 @@ impl DeviceCapabilities {
 ///   the generator emits them as `pub const`s pointing at the same variant, so
 ///   there is one value per name and no second arm to write.
 ///
+/// The cooperative-matrix entries that STAY in the token, and the scopes of those that do not (V-18, KISS 0.24.5).
+///
+/// `entries` is every `VkCooperativeMatrixPropertiesKHR` of the device as its shape and raw `scope`. A tuple carries no
+/// scope coordinate because the scope is the one every tuple already means, so only `VK_SCOPE_SUBGROUP_KHR` entries
+/// become shapes; an entry of any other scope (workgroup, device, queue family, or one this crate does not know) is
+/// omitted WHOLE, never truncated and never spelled as a subgroup tuple, and its scope is returned as
+/// `vulkan:scope:<n>` (`n` the decimal `VkScopeKHR` value; sorted by `n`, unique) for `unnamed_types`.
+fn subgroup_shapes(
+    entries: impl IntoIterator<Item = (CoopShape, i32)>,
+) -> (Vec<CoopShape>, Vec<String>) {
+    const SUBGROUP: i32 = VkScopeKHR::SCOPE_SUBGROUP_KHR as i32;
+    let mut shapes = Vec::new();
+    let mut omitted = Vec::new();
+    for (shape, scope) in entries {
+        if scope == SUBGROUP {
+            shapes.push(shape);
+        } else {
+            omitted.push(scope);
+        }
+    }
+    omitted.sort_unstable();
+    omitted.dedup();
+    (
+        shapes,
+        omitted
+            .into_iter()
+            .map(|n| format!("vulkan:scope:{n}"))
+            .collect(),
+    )
+}
+
 /// Values outside all of these become [`ComponentType::Other`] rather than an
 /// error: new Vulkan component types appear faster than a vocabulary revision
 /// can track them. Tuples holding one are omitted whole from the token and the raw
@@ -774,5 +818,82 @@ mod derivability {
             OpClasses::NONE,
             "the deriver covers no op class"
         );
+    }
+}
+
+/// V-18: a `cm-` tuple is a subgroup-scope shape; every other scope is omitted whole and reported.
+#[cfg(test)]
+mod scope_tests {
+    use super::*;
+
+    const SUBGROUP: i32 = VkScopeKHR::SCOPE_SUBGROUP_KHR as i32;
+
+    fn shape(m: u32) -> CoopShape {
+        CoopShape {
+            m,
+            n: 16,
+            k: 16,
+            a: ComponentType::F16,
+            b: ComponentType::F16,
+            c: ComponentType::F32,
+            result: ComponentType::F32,
+            saturating: false,
+        }
+    }
+
+    /// The numbers are the registry's, not ours: the test fails if the generated binding stops saying that subgroup is 3.
+    #[test]
+    fn the_scope_values_are_the_registrys() {
+        assert_eq!(SUBGROUP, 3, "VK_SCOPE_SUBGROUP_KHR");
+        assert_eq!(VkScopeKHR::SCOPE_WORKGROUP_KHR as i32, 2);
+        assert_eq!(VkScopeKHR::SCOPE_DEVICE_KHR as i32, 1);
+        assert_eq!(VkScopeKHR::SCOPE_QUEUE_FAMILY_KHR as i32, 5);
+    }
+
+    #[test]
+    fn only_subgroup_entries_become_shapes_and_the_others_are_reported_by_scope() {
+        let entries = vec![
+            (shape(16), SUBGROUP),
+            (shape(32), VkScopeKHR::SCOPE_WORKGROUP_KHR as i32),
+            (shape(8), VkScopeKHR::SCOPE_QUEUE_FAMILY_KHR as i32),
+            (shape(64), VkScopeKHR::SCOPE_WORKGROUP_KHR as i32),
+            (shape(4), 1000),
+            (shape(2), VkScopeKHR::SCOPE_DEVICE_KHR as i32),
+        ];
+        let (shapes, omitted) = subgroup_shapes(entries);
+        assert_eq!(
+            shapes,
+            vec![shape(16)],
+            "only the subgroup entry is a shape"
+        );
+        assert_eq!(
+            omitted,
+            [
+                "vulkan:scope:1",
+                "vulkan:scope:2",
+                "vulkan:scope:5",
+                "vulkan:scope:1000"
+            ],
+            "each other scope once, by number, whether the registry names it or not"
+        );
+    }
+
+    #[test]
+    fn a_subgroup_only_device_reports_no_scope_and_keeps_every_shape() {
+        let (shapes, omitted) = subgroup_shapes(vec![(shape(16), SUBGROUP), (shape(32), SUBGROUP)]);
+        assert_eq!(shapes.len(), 2);
+        assert!(
+            omitted.is_empty(),
+            "the control: the two known devices (all scope 3) report nothing: {omitted:?}"
+        );
+    }
+
+    /// A non-subgroup entry never reaches the token: it is not spelled as a subgroup tuple.
+    #[test]
+    fn a_non_subgroup_entry_is_not_spelled_as_a_subgroup_tuple() {
+        let (shapes, _) =
+            subgroup_shapes(vec![(shape(16), VkScopeKHR::SCOPE_WORKGROUP_KHR as i32)]);
+        assert!(shapes.is_empty());
+        assert_eq!(CoopMatrix::from_shapes(shapes), CoopMatrix::None);
     }
 }
