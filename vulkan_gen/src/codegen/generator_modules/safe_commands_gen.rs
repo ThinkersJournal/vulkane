@@ -141,14 +141,6 @@ fn is_phase1_handled_command(name: &str) -> bool {
         || name.starts_with("vkFree")
 }
 
-/// Rust identifier name for a method, derived from the Vulkan command
-/// name. Preserves the `vk_` prefix so generated methods are easy to
-/// distinguish from hand-written ergonomic wrappers.
-fn method_name(cmd_name: &str) -> String {
-    // "vkCmdTraceRaysKHR" -> "vk_cmd_trace_rays_khr"
-    camel_to_snake(cmd_name)
-}
-
 /// Number of `*` in a parameter definition — i.e. its pointer depth.
 fn pointer_level(p: &CommandParam) -> usize {
     p.definition.matches('*').count()
@@ -230,7 +222,9 @@ fn returns_void(cmd: &VulkanCommand) -> bool {
 /// matching trait-signature string. Returns `None` if the command is
 /// skipped.
 fn emit_method(cmd: &VulkanCommand, target: Target) -> Option<(String, String)> {
-    let method = method_name(&cmd.name);
+    // "vkCmdTraceRaysKHR" -> "vk_cmd_trace_rays_khr": the `vk_` prefix is kept so generated
+    // methods are easy to tell from the hand-written ergonomic wrappers.
+    let method = camel_to_snake(&cmd.name);
 
     // First parameter is always the dispatch-target handle — we drop
     // it from the signature and pass `self`'s raw handle in the body.
@@ -334,7 +328,9 @@ fn emit_passthrough_typed_return(
     target: Target,
     return_ty: &str,
 ) -> (String, String) {
-    let method = method_name(&cmd.name);
+    // "vkCmdTraceRaysKHR" -> "vk_cmd_trace_rays_khr": the `vk_` prefix is kept so generated
+    // methods are easy to tell from the hand-written ergonomic wrappers.
+    let method = camel_to_snake(&cmd.name);
     let mut sig_params: Vec<String> = Vec::new();
     let mut call_args: Vec<String> = Vec::new();
     call_args.push(target.raw_handle_expr().to_string());
@@ -580,8 +576,8 @@ mod tests {
 
     #[test]
     fn method_name_keeps_vk_prefix() {
-        assert_eq!(method_name("vkCmdTraceRaysKHR"), "vk_cmd_trace_rays_khr");
-        assert_eq!(method_name("vkQueueSubmit"), "vk_queue_submit");
+        assert_eq!(camel_to_snake("vkCmdTraceRaysKHR"), "vk_cmd_trace_rays_khr");
+        assert_eq!(camel_to_snake("vkQueueSubmit"), "vk_queue_submit");
     }
 
     #[test]
