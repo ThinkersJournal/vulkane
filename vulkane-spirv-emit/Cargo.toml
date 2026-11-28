@@ -1,6 +1,6 @@
 [package]
 name         = "vulkane-spirv-emit"
-version      = "0.32.2"
+version      = "0.33.0"
 edition      = "2024"
 rust-version = "1.85"
 authors      = ["Eric Evans <CireSnave@gmail.com>"]
@@ -18,7 +18,7 @@ rspirv         = "0.13.0"
 unpopped       = "~0.63.0"
 unpopped-vocab = "~0.63.0"
 # Packed values (vectors) are scalarized before lowering: `unpopped`'s `lower_dag` has no seam for them.
-vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.32" }
+vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.33" }
 
 [dev-dependencies]
 # The published decline fixtures (ROADMAP 9h): one checker-valid kernel or module per `Stmt` variant.
