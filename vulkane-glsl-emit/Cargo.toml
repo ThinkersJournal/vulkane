@@ -1,6 +1,6 @@
 [package]
 name         = "vulkane-glsl-emit"
-version      = "0.32.2"
+version      = "0.33.0"
 edition      = "2024"
 rust-version = "1.85"
 authors      = ["Eric Evans <CireSnave@gmail.com>"]
@@ -14,13 +14,13 @@ readme       = "README.md"
 include      = ["src/**", "README.md", "LICENSE-*"]
 
 [dependencies]
-unpopped       = "~0.62.0"
-unpopped-vocab = "~0.62.0"
-vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.32" }
+unpopped       = "~0.63.0"
+unpopped-vocab = "~0.63.0"
+vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.33" }
 
 [dev-dependencies]
 # The published decline fixtures (ROADMAP 9h): one checker-valid kernel or module per `Stmt` variant.
-unpopped = { version = "~0.62.0", features = ["fixtures"] }
+unpopped = { version = "~0.63.0", features = ["fixtures"] }
 # Shared test helpers (GPU lock witness, kernels, oracles): ROADMAP row 8n, in place of `#[path]` includes.
 vulkane-test-support = { path = "../vulkane-test-support" }
 # The live-device test opens a device through the safe wrapper (and its shared `tests/common`).
