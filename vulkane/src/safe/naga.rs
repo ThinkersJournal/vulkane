@@ -5,7 +5,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! vulkane = { version = "0.32", features = ["naga"] }
+//! vulkane = { version = "0.33", features = ["naga"] }
 //! ```
 //!
 //! It provides one convenience function, [`compile_glsl`], that takes a
