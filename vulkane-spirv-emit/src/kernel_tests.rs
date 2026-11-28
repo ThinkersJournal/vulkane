@@ -505,3 +505,31 @@ fn an_atomic_at_cluster_scope_is_a_typed_decline() {
     assert!(check_kernel(&k).is_ok(), "{:?}", check_kernel(&k));
     declined(&k, "an atomic at scope");
 }
+
+/// `Stmt::Assume` (unpopped 0.64, U50) is omitted: the module with the statement(s) is byte-equal to the module without them, in every
+/// placement, and valid; the comparison is not vacuous (two different kernels do not emit equal modules). `OpAssumeTrueKHR` would need
+/// `SPV_KHR_expect_assume`, which this emitter does not enable, so there is no hint to emit.
+#[test]
+fn an_assume_never_changes_the_emitted_module_of_the_rest_of_the_kernel() {
+    let pairs = vulkane_test_support::stmt_kernel::assume_pairs();
+    for (label, without, with) in &pairs {
+        unpopped::kernel::check_kernel(with)
+            .unwrap_or_else(|e| panic!("{label}: the assume kernel must be checker-valid: {e:?}"));
+        let a = lower(without)
+            .unwrap_or_else(|e| panic!("{label}: the kernel without the assume must lower: {e:?}"));
+        let b = lower(with)
+            .unwrap_or_else(|e| panic!("{label}: the kernel with the assume must lower: {e:?}"));
+        assert_eq!(
+            format!("{a:?}"),
+            format!("{b:?}"),
+            "{label}: an Assume changed the emitted module"
+        );
+    }
+    let one = lower(&pairs[0].1).expect("lowers");
+    let other = lower(&pairs[1].1).expect("lowers");
+    assert_ne!(
+        format!("{one:?}"),
+        format!("{other:?}"),
+        "control: two different kernels must not emit equal modules"
+    );
+}

@@ -85,3 +85,32 @@ fn the_tile_statements_and_a_tile_space_are_refused_by_name() {
         }
     }
 }
+
+/// `Stmt::Assume` (unpopped 0.64, U50) is omitted: the emission with the statement(s) equals the emission without them, byte for byte, in
+/// every placement; and the comparison is not vacuous (two different kernels do not emit equal text).
+#[test]
+fn an_assume_never_changes_the_emitted_code_of_the_rest_of_the_kernel() {
+    let pairs = vulkane_test_support::stmt_kernel::assume_pairs();
+    for (label, without, with) in &pairs {
+        unpopped::kernel::check_kernel(with)
+            .unwrap_or_else(|e| panic!("{label}: the assume kernel must be checker-valid: {e:?}"));
+        let a = Msl
+            .lower_kernel(without)
+            .unwrap_or_else(|e| panic!("{label}: the kernel without the assume must lower: {e:?}"));
+        let b = Msl
+            .lower_kernel(with)
+            .unwrap_or_else(|e| panic!("{label}: the kernel with the assume must lower: {e:?}"));
+        assert_eq!(
+            format!("{a:?}"),
+            format!("{b:?}"),
+            "{label}: an Assume changed the emitted code"
+        );
+    }
+    let one = Msl.lower_kernel(&pairs[0].1).expect("lowers");
+    let other = Msl.lower_kernel(&pairs[1].1).expect("lowers");
+    assert_ne!(
+        format!("{one:?}"),
+        format!("{other:?}"),
+        "control: two different kernels must not emit equal text"
+    );
+}

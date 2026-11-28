@@ -6,7 +6,7 @@ use unpopped::kernel::Stmt;
 /// What the emitters of this repository do with a statement.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Coverage {
-    /// Lowered by the shared walker and by the SPIR-V emitter.
+    /// Lowered by the shared walker and by the SPIR-V emitter (`Assume` by omission: it emits nothing).
     Lowered,
     /// Not lowered yet, and a ROADMAP row says what it waits for (the text).
     Row(&'static str),
@@ -36,7 +36,9 @@ pub fn coverage(stmt: &Stmt) -> Coverage {
         | Stmt::Barrier { .. }
         | Stmt::Fence { .. }
         | Stmt::AtomicRmw { .. }
-        | Stmt::AtomicCas { .. } => Coverage::Lowered,
+        | Stmt::AtomicCas { .. }
+        // Lowered BY OMISSION (unpopped 0.64, U50): a value fact that reads and writes nothing; no emitted text.
+        | Stmt::Assume { .. } => Coverage::Lowered,
         Stmt::Call { .. } | Stmt::CallTuple { .. } | Stmt::ExternCall { .. } => {
             Coverage::Row("ROADMAP row 8g: device function calls are not lowered yet")
         }

@@ -1,6 +1,6 @@
 [package]
 name         = "vulkane-test-support"
-version = "0.33.2"
+version = "0.34.0"
 edition      = "2024"
 rust-version = "1.85"
 authors      = ["Eric Evans <CireSnave@gmail.com>"]
@@ -10,8 +10,8 @@ repository   = "https://github.com/ThinkersJournal/vulkane"
 publish      = false
 
 [dependencies]
-unpopped           = "~0.63.0"
-unpopped-vocab     = "~0.63.0"
+unpopped           = "~0.64.0"
+unpopped-vocab     = "~0.64.0"
 tempfile           = { workspace = true }
 # A dev-dependency cycle on purpose: these crates' tests depend on this one, and it needs them for the
 # device harness (`gpu`) and the live-device helpers (`common`). Cargo allows it; this crate is never published.
