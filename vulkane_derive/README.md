@@ -10,7 +10,7 @@ instead.
 
 ```toml
 [dependencies]
-vulkane = { version = "0.33", features = ["derive"] }
+vulkane = { version = "0.34", features = ["derive"] }
 ```
 
 See the `vulkane` documentation and `vulkane/examples/derive_vertex.rs` for usage.
