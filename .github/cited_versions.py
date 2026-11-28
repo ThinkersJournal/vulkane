@@ -3,7 +3,9 @@
 """Does every version this repo cites FOR CONSUMPTION still resolve to what the
 registry currently serves?
 
-    a version cited for CONSUMPTION  ->  must accept the crate's max_stable
+    a version cited for CONSUMPTION  ->  must accept the crate's max_stable,
+        OR the crate's OWN `Cargo.toml` version at the checked commit while the
+        registry has not served it yet (the release PR of X.Y.0 cites X.Y)
     a version cited to describe THIS TREE  ->  must be the tree's own
 
 !! ONE STRING DOES BOTH JOBS ONLY WHILE THE TWO COINCIDE, and post-publish
@@ -74,8 +76,12 @@ def tool_path(name: str) -> str:
     return found
 
 
-def workspace_crates(manifest_dir: str) -> set[str]:
-    """Every workspace member's name. Citations of anything else are not ours."""
+def workspace_versions(manifest_dir: str) -> dict[str, str]:
+    """Every workspace member's name and its OWN `Cargo.toml` version.
+
+    Read from `cargo metadata` in the checked-out tree, so it is the version AT
+    THE CHECKED COMMIT. Citations of anything else are not ours.
+    """
     out = subprocess.run(  # nosec B603 # nosemgrep
         [tool_path("cargo"), "metadata", "--no-deps", "--format-version", "1"],
         cwd=manifest_dir, capture_output=True, text=True, encoding="utf-8",
@@ -83,7 +89,12 @@ def workspace_crates(manifest_dir: str) -> set[str]:
     if out.returncode != 0:
         sys.stderr.write(out.stderr)
         raise SystemExit("cargo metadata failed in %s" % manifest_dir)
-    return {p["name"] for p in json.loads(out.stdout)["packages"]}
+    return {p["name"]: p["version"] for p in json.loads(out.stdout)["packages"]}
+
+
+def workspace_crates(manifest_dir: str) -> set[str]:
+    """Every workspace member's name. Citations of anything else are not ours."""
+    return set(workspace_versions(manifest_dir))
 
 
 def tracked_files(manifest_dir: str) -> list[str]:
@@ -224,8 +235,33 @@ def max_stable(name: str) -> str | None:
         raise
 
 
-def classify(req: str, served: str | None) -> tuple[str, str]:
-    """(verdict, detail) for one citation."""
+def accepts_own_unserved(req: str, served: str, own: str) -> bool:
+    """Is `req` a citation of THIS crate's own version, which the registry has
+    not served yet?
+
+    The defect class this closes: the release PR of X.Y.0 could not cite X.Y.
+    The registry serves X.(Y-1).z until the PM publishes, so the citation was
+    STALE at CI time and the publish waits on a green main, which made the red
+    unfixable inside the PR that caused it. The only version a citation may
+    accept besides the served one is the crate's OWN `Cargo.toml` version at the
+    checked commit, and only while that version is AHEAD of what the registry
+    serves. Not a flag, not another crate's version, not a version beyond the
+    tree's own.
+    """
+    s, o = parse_version(served), parse_version(own)
+    if s is None or o is None:
+        return False  # a pre-release or odd own version is not understood: not guessed ok
+    s = s + [0] * (3 - len(s))
+    o = o + [0] * (3 - len(o))
+    if not s < o:
+        return False  # the registry serves it (or newer): the served-version rule decides
+    return accepts(req, own) is True
+
+
+def classify(req: str, served: str | None,
+             own: str | None = None) -> tuple[str, str]:
+    """(verdict, detail) for one citation. `own` is the cited crate's own
+    `Cargo.toml` version at the checked commit, or None."""
     if served is None:
         return NEVER_PUBLISHED, "the registry has never served this crate"
     ok = accepts(req, served)
@@ -233,7 +269,20 @@ def classify(req: str, served: str | None) -> tuple[str, str]:
         return UNPARSED, "requirement %r is not a bare caret form" % req
     if ok:
         return "ok", ""
+    if own is not None and accepts_own_unserved(req, served, own):
+        return "ok", ("accepted: this crate's own unpublished %s (the registry "
+                      "serves %s)" % (own, served))
     return STALE, "does not accept the served %s" % served
+
+
+def verdict_for(crate: str, req: str, served: str | None,
+                versions: dict[str, str]) -> tuple[str, str]:
+    """(verdict, detail) for one citation of `crate`, given the workspace's versions.
+
+    The crate's OWN version is looked up by its own name: a workspace member
+    never borrows another member's version.
+    """
+    return classify(req, served, versions.get(crate))
 
 
 def report(rows: list[tuple], gate: bool) -> int:
@@ -246,6 +295,8 @@ def report(rows: list[tuple], gate: bool) -> int:
             bad.append((site, crate, req, detail))
         print("  %-34s %-18s %-9s %-9s %s"
               % (site, crate, req, served or "-", verdict))
+        if verdict == "ok" and detail:
+            print("      ^ %s" % detail)
 
     # A scan that matched nothing must FAIL, not pass. Zero citations and a
     # repo whose citations are all correct produce identical silence.
@@ -317,6 +368,36 @@ def self_test() -> int:
           "pub fn f() {}"]
     check("a toml fence inside rustdoc is found", 2 in toml_fenced_lines(rs, True))
 
+    # -- a citation of the workspace's OWN unpublished version --------------
+    # The PM ruling (option a, the narrowest form): compare to the Cargo.toml
+    # version AT THE CHECKED COMMIT, never to a flag. The registry serves
+    # 0.33.1; the tree is at 0.34.0, a release the PM has not published yet;
+    # `kiss-vulkan-vocab` is a different crate with a different version.
+    ws = {"vulkane": "0.34.0", "kiss-vulkan-vocab": "0.4.2"}
+
+    def v(crate, req, served):
+        return verdict_for(crate, req, served, ws)[0]
+
+    check("OWN unpublished: vulkane 0.34 at its own 0.34.0, registry 0.33.1 -> ok",
+          v("vulkane", "0.34", "0.33.1") == "ok")
+    check("OLDER than served: vulkane 0.32 against 0.33.1 is STALE",
+          v("vulkane", "0.32", "0.33.1") == STALE)
+    check("AHEAD of the workspace: vulkane 0.35 at its own 0.34.0 is STALE",
+          v("vulkane", "0.35", "0.33.1") == STALE)
+    check("ANOTHER crate's version is not borrowed: kiss-vulkan-vocab 0.34 is STALE",
+          v("kiss-vulkan-vocab", "0.34", "0.4.1") == STALE)
+    # ...and the controls, so the arms above are not passing on the wrong thing.
+    check("control: today's rule still holds, vulkane 0.33 accepts the served 0.33.1",
+          v("vulkane", "0.33", "0.33.1") == "ok")
+    check("control: once the registry serves 0.34.0, 0.33 is STALE again",
+          v("vulkane", "0.33", "0.34.0") == STALE)
+    check("control: a registry AHEAD of the tree gets no own-version pass (tree 0.33.0, served 0.34.0, cite 0.33)",
+          verdict_for("vulkane", "0.33", "0.34.0", {"vulkane": "0.33.0"})[0] == STALE)
+    check("control: a crate the registry never served is still NEVER-PUBLISHED",
+          v("vulkane", "0.34", None) == NEVER_PUBLISHED)
+    check("control: an unparsed requirement is still UNPARSED, not guessed ok",
+          v("vulkane", ">=0.34", "0.33.1") == UNPARSED)
+
     # -- exit codes ---------------------------------------------------------
     quiet = io.StringIO()
 
@@ -356,13 +437,14 @@ def main() -> int:
     if args.self_test:
         return self_test()
 
-    crates = workspace_crates(args.manifest_dir)
+    versions = workspace_versions(args.manifest_dir)
+    crates = set(versions)
     served: dict[str, str | None] = {}
     rows = []
     for rel, line, crate, req in citations(args.manifest_dir, crates):
         if crate not in served:
             served[crate] = max_stable(crate)
-        verdict, detail = classify(req, served[crate])
+        verdict, detail = verdict_for(crate, req, served[crate], versions)
         rows.append(("%s:%d" % (rel, line), crate, req, served[crate],
                      verdict, detail))
     return report(rows, args.gate)
