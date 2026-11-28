@@ -1473,6 +1473,10 @@ impl Allocator {
 }
 
 impl Allocator {
+    fn pick_memory_type(&self, type_bits: u32, usage: AllocationUsage) -> Option<u32> {
+        pick_memory_type_in(&self.inner.memory_properties, type_bits, usage)
+    }
+
     fn is_host_visible(&self, memory_type_index: u32) -> bool {
         let mp = &self.inner.memory_properties;
         let flags = mp.memoryTypes[memory_type_index as usize].propertyFlags;
