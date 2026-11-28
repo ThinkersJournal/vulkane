@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 `vulkan_gen` 0.5.2: the row 9a module-cycle fix changes its source, and 0.5.1 is already served on crates.io with different source, so the version-divergence gate requires an unpublished version. No other crate version was bumped. The same 0.5.2 (still unpublished) also carries the `vk.xml` 368 generator fix: a mutable `void*` parameter is no longer turned into a by-value `-> c_void` safe method (`vkGetLatencyTimingsLegacyNV`, new in 368).
 
+## [0.34.2] — `vulkane::safe::allocator` is split: memory-type selection and defragmentation planning move into their own files (ROADMAP 9b slice 1, CodeRipper MOD-005); no API change
+
+`allocator/mod.rs` was the repository's size outlier (CodeRipper MOD-005). Memory-type selection (with its tests) moves to `allocator/memory_type.rs` and defragmentation planning to `allocator/defrag.rs`; `DefragmentationMove` and `DefragmentationPlan` are re-exported from the same path, so no public path changes. A move, not a rewrite: the cherry-picked commit of the old `day-2026-11-26-9b` branch (26c3eca), re-cut onto current main. Evidence is in the PR body.
+
 ## [0.34.1] — docs: row 8y, what the 36 old remote branches held and why deleting them lost nothing
 
 Adds `docs/design/row-8y-branch-verification.md` and moves ROADMAP row 8y to done. Every landing of this lane's work was a squash merge, so the ancestry and pull-request checks cannot say whether a branch's work reached `main`; the record is the added-symbol check over all 36 branches (13 list nothing missing, 9 only a helper whose file moved into `vulkane-test-support`, 8 only a collective test the board 506 "A" lowering superseded, 2 only a bf16 test that main splits in two, and the rest are handled by name, with `day-2026-11-26-g1-review` and `-patent-audit` revived as #199 and #200). The tips are saved as a verified bundle outside the repository. 34 branches are deleted from `origin`; `-506-prep` (the PM's vote hold) and `-9b` remain. Docs only.
