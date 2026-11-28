@@ -17,7 +17,7 @@ include      = ["src/**", "README.md", "LICENSE-*", "THIRD-PARTY-NOTICES.md"]
 unpopped            = "~0.64.0"
 unpopped-vocab      = "~0.64.0"
 # FishStringer owns Slang (CireSnave 2026-11-06). `~` not `^`: this crate asserts the emitter's output shape.
-fishstringer-slang-emit = "~0.13.0"
+fishstringer-slang-emit = "~0.14.0"
 vulkane-kernel-text = { path = "../vulkane-kernel-text", version = "0.33" }
 
 [dev-dependencies]
